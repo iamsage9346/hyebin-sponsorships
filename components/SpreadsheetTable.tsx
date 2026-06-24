@@ -424,17 +424,57 @@ export function SpreadsheetTable(props: Props) {
   // ----- 확대/축소 -----
   const [zoom, setZoom] = useState(1);
   const clampZoom = (z: number) => Math.min(2, Math.max(0.5, +z.toFixed(2)));
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    // 데스크탑: Ctrl/⌘ + 스크롤
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // Ctrl/⌘ + 스크롤일 때만 줌
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       setZoom((z) => clampZoom(z - e.deltaY * 0.0015));
     };
+
+    // 모바일: 두 손가락 핀치
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+    const dist = (t: TouchList) =>
+      Math.hypot(
+        t[0].clientX - t[1].clientX,
+        t[0].clientY - t[1].clientY,
+      );
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchStartDist = dist(e.touches);
+        pinchStartZoom = zoomRef.current;
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartDist > 0) {
+        e.preventDefault(); // 브라우저 전체 확대 방지, 표만 확대
+        const ratio = dist(e.touches) / pinchStartDist;
+        setZoom(() => clampZoom(pinchStartZoom * ratio));
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinchStartDist = 0;
+    };
+
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
   }, []);
 
   return (
