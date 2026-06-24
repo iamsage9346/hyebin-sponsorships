@@ -1,21 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { formatYMD, parseDate } from "@/lib/date";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function initView(value: string | null): { y: number; m: number } {
   const now = new Date();
-  let y = now.getFullYear();
-  let m = now.getMonth();
-  if (value) {
-    const match = value.match(/(\d{1,2})\s*월/);
-    if (match) {
-      const mm = parseInt(match[1], 10) - 1;
-      if (mm >= 0 && mm <= 11) m = mm;
-    }
-  }
-  return { y, m };
+  const parsed = parseDate(value);
+  if (parsed) return { y: parsed.y, m: parsed.m };
+  return { y: now.getFullYear(), m: now.getMonth() };
 }
 
 interface Props {
@@ -24,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** 날짜 셀 클릭 시 뜨는 작은 월 달력. 선택하면 "M월 D" 형식으로 저장 */
+/** 날짜 셀 클릭 시 뜨는 작은 월 달력. 선택하면 "2026.05.03" 형식으로 저장 */
 export function Calendar({ value, onPick, onClose }: Props) {
   const [view, setView] = useState(() => initView(value));
   const ref = useRef<HTMLDivElement>(null);
@@ -43,18 +37,16 @@ export function Calendar({ value, onPick, onClose }: Props) {
   for (let i = 0; i < startDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  const selectedDay = (() => {
-    if (!value) return null;
-    const match = value.match(/월\s*(\d{1,2})/);
-    return match ? parseInt(match[1], 10) : null;
-  })();
+  const sel = parseDate(value);
+  const selectedDay =
+    sel && sel.y === view.y && sel.m === view.m ? sel.d : null;
 
   return (
     <div
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      className="absolute left-0 top-full z-30 mt-1 w-56 rounded-md border border-gray-200 bg-white p-2 text-gray-800 shadow-lg"
+      className="absolute left-0 top-full z-30 mt-1 w-60 rounded-md border border-gray-200 bg-white p-2 text-gray-800 shadow-lg"
     >
       <div className="mb-1 flex items-center justify-between text-sm">
         <button
@@ -67,7 +59,7 @@ export function Calendar({ value, onPick, onClose }: Props) {
           ‹
         </button>
         <span className="font-medium">
-          {view.y}년 {view.m + 1}월
+          {view.y}.{String(view.m + 1).padStart(2, "0")}
         </span>
         <button
           type="button"
@@ -94,7 +86,7 @@ export function Calendar({ value, onPick, onClose }: Props) {
             <button
               key={i}
               type="button"
-              onClick={() => onPick(`${view.m + 1}월 ${d}`)}
+              onClick={() => onPick(formatYMD({ y: view.y, m: view.m, d }))}
               className={`rounded py-1 hover:bg-blue-100 ${
                 d === selectedDay ? "bg-blue-500 text-white hover:bg-blue-500" : ""
               }`}

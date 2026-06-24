@@ -24,6 +24,7 @@ interface Props {
   onRenameColumn: (key: string, label: string) => void;
   onChangeColumnType: (key: string, type: ColumnType) => void;
   onSetColumnOptions: (key: string, options: SelectOption[]) => void;
+  onResizeColumn: (key: string, width: number) => void;
   onInsertColumn: (key: string, side: "left" | "right") => void;
   onDeleteColumn: (key: string) => void;
   onInsertRow: (id: string, where: "above" | "below") => void;
@@ -62,6 +63,7 @@ export function SpreadsheetTable(props: Props) {
     onRenameColumn,
     onChangeColumnType,
     onSetColumnOptions,
+    onResizeColumn,
     onInsertColumn,
     onDeleteColumn,
     onInsertRow,
@@ -169,6 +171,13 @@ export function SpreadsheetTable(props: Props) {
 
   const onCellClick = useCallback(
     (r: number, c: number) => {
+      // 수식 편집 중에는 클릭이 참조 삽입용이므로 선택 이동 무시
+      if (
+        inputRef.current &&
+        inputRef.current.value.trimStart().startsWith("=")
+      ) {
+        return;
+      }
       const s = selRef.current;
       if (s && s.r === r && s.c === c) {
         startEdit();
@@ -220,6 +229,64 @@ export function SpreadsheetTable(props: Props) {
 
   const evaluator = useMemo(() => makeEvaluator(columns, rows), [columns, rows]);
 
+  // ----- 수식 입력 중 셀 클릭/드래그로 참조 삽입 -----
+  const draggingPointRef = useRef(false);
+  const pointAnchorRef = useRef<{ r: number; c: number } | null>(null);
+  const pointStartIdxRef = useRef(0);
+  const pointLastLenRef = useRef(0);
+
+  const isFormulaInput = useCallback(
+    () =>
+      !!inputRef.current &&
+      inputRef.current.value.trimStart().startsWith("="),
+    [],
+  );
+
+  const onCellMouseDown = useCallback(
+    (r: number, c: number, e: React.MouseEvent) => {
+      if (!isFormulaInput()) return;
+      e.preventDefault(); // 입력 포커스 유지 (blur 방지)
+      const inp = inputRef.current!;
+      draggingPointRef.current = true;
+      pointAnchorRef.current = { r, c };
+      const pos = inp.selectionStart ?? inp.value.length;
+      pointStartIdxRef.current = pos;
+      const ref = indexToLetters(c) + (r + 1);
+      inp.value = inp.value.slice(0, pos) + ref + inp.value.slice(pos);
+      const caret = pos + ref.length;
+      inp.setSelectionRange(caret, caret);
+      pointLastLenRef.current = ref.length;
+    },
+    [isFormulaInput],
+  );
+
+  const onCellMouseEnter = useCallback((r: number, c: number) => {
+    if (!draggingPointRef.current) return;
+    const a = pointAnchorRef.current;
+    const inp = inputRef.current;
+    if (!a || !inp) return;
+    const refStr =
+      a.r === r && a.c === c
+        ? indexToLetters(c) + (r + 1)
+        : `${indexToLetters(a.c)}${a.r + 1}:${indexToLetters(c)}${r + 1}`;
+    const start = pointStartIdxRef.current;
+    inp.value =
+      inp.value.slice(0, start) +
+      refStr +
+      inp.value.slice(start + pointLastLenRef.current);
+    const caret = start + refStr.length;
+    inp.setSelectionRange(caret, caret);
+    pointLastLenRef.current = refStr.length;
+  }, []);
+
+  useEffect(() => {
+    const up = () => {
+      draggingPointRef.current = false;
+    };
+    document.addEventListener("mouseup", up);
+    return () => document.removeEventListener("mouseup", up);
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -238,7 +305,7 @@ export function SpreadsheetTable(props: Props) {
               <th
                 key={col.key}
                 style={{ width: col.width, minWidth: col.width }}
-                className="border-b border-r border-gray-200 px-2 py-2 text-left text-xs font-semibold text-gray-600"
+                className="relative border-b border-r border-gray-200 px-2 py-2 text-left text-xs font-semibold text-gray-600"
               >
                 <ColumnHeader
                   column={col}
@@ -250,6 +317,10 @@ export function SpreadsheetTable(props: Props) {
                   onSetOptions={onSetColumnOptions}
                   onInsert={onInsertColumn}
                   onDelete={onDeleteColumn}
+                />
+                <ColumnResizer
+                  width={col.width}
+                  onResize={(w) => onResizeColumn(col.key, w)}
                 />
               </th>
             ))}
@@ -273,6 +344,8 @@ export function SpreadsheetTable(props: Props) {
               editTyped={sel?.r === r ? editTyped : false}
               inputRef={inputRef}
               onCellClick={onCellClick}
+              onCellMouseDown={onCellMouseDown}
+              onCellMouseEnter={onCellMouseEnter}
               onInputKeyDown={onInputKeyDown}
               onInputBlur={onInputBlur}
               pickValue={pickValue}
@@ -312,6 +385,8 @@ interface RowProps {
   editTyped: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onCellClick: (r: number, c: number) => void;
+  onCellMouseDown: (r: number, c: number, e: React.MouseEvent) => void;
+  onCellMouseEnter: (r: number, c: number) => void;
   onInputKeyDown: (e: React.KeyboardEvent) => void;
   onInputBlur: () => void;
   pickValue: (rowId: string, key: string, value: string | null) => void;
@@ -333,6 +408,8 @@ const RowView = React.memo(function RowView({
   editTyped,
   inputRef,
   onCellClick,
+  onCellMouseDown,
+  onCellMouseEnter,
   onInputKeyDown,
   onInputBlur,
   pickValue,
@@ -360,6 +437,8 @@ const RowView = React.memo(function RowView({
           <td
             key={col.key}
             onClick={() => onCellClick(rowIndex, c)}
+            onMouseDown={(e) => onCellMouseDown(rowIndex, c, e)}
+            onMouseEnter={() => onCellMouseEnter(rowIndex, c)}
             style={{ width: col.width, minWidth: col.width }}
             className={`relative cursor-default border-b border-r border-gray-100 px-2 py-1.5 align-top ${
               isEditing ? "bg-white ring-2 ring-inset ring-blue-500" : ""
@@ -514,6 +593,37 @@ function RowMenu({ onAction }: { onAction: (a: RowAction) => void }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ColumnResizer({
+  width,
+  onResize,
+}: {
+  width: number;
+  onResize: (w: number) => void;
+}) {
+  const start = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = width;
+    const move = (ev: MouseEvent) =>
+      onResize(Math.max(50, startW + ev.clientX - startX));
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
+  return (
+    <div
+      onMouseDown={start}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-blue-400/60"
+      title="드래그하여 너비 조절"
+    />
   );
 }
 

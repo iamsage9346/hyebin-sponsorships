@@ -1,8 +1,16 @@
-import type { Column, Row, SheetData } from "./types";
+import type { Column, Row, Sheet, SheetData, Workspace } from "./types";
 import { buildSeedData, COLUMNS, TOTAL_ROWS } from "./seed";
 
-const STORAGE_KEY = "hyebin-sponsorships:data:v2";
-const LEGACY_ROWS_KEY = "hyebin-sponsorships:rows:v1";
+const WS_KEY = "hyebin-sponsorships:workspace:v3";
+const V2_KEY = "hyebin-sponsorships:data:v2";
+const V1_KEY = "hyebin-sponsorships:rows:v1";
+
+function cloneColumns(cols: Column[]): Column[] {
+  return cols.map((c) => ({
+    ...c,
+    options: c.options ? c.options.map((o) => ({ ...o })) : undefined,
+  }));
+}
 
 function blankRow(columns: Column[]): Row {
   const row: Row = { id: newRowId() };
@@ -10,52 +18,10 @@ function blankRow(columns: Column[]): Row {
   return row;
 }
 
-/** 최소 TOTAL_ROWS개가 되도록 빈 행을 채운다 */
 function padRows(rows: Row[], columns: Column[]): Row[] {
   const out = [...rows];
   while (out.length < TOTAL_ROWS) out.push(blankRow(columns));
   return out;
-}
-
-/**
- * 컬럼·행 구조를 모두 localStorage에 저장한다.
- * v1(행만 저장) 데이터가 있으면 한 번만 마이그레이션한다.
- */
-export function loadData(): SheetData {
-  if (typeof window === "undefined") return buildSeedData();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as SheetData;
-      if (
-        parsed &&
-        Array.isArray(parsed.columns) &&
-        Array.isArray(parsed.rows)
-      ) {
-        return { columns: parsed.columns, rows: parsed.rows };
-      }
-    }
-    // v1 → v2 마이그레이션 (행만 저장돼 있던 경우)
-    const legacy = window.localStorage.getItem(LEGACY_ROWS_KEY);
-    if (legacy) {
-      const rows = JSON.parse(legacy) as Row[];
-      if (Array.isArray(rows)) {
-        return { columns: COLUMNS, rows: padRows(rows, COLUMNS) };
-      }
-    }
-  } catch {
-    // 손상된 데이터는 무시하고 시드로 시작
-  }
-  return buildSeedData();
-}
-
-export function saveData(data: SheetData): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // 저장 실패는 조용히 무시 (용량 초과 등)
-  }
 }
 
 export function newRowId(): string {
@@ -66,6 +32,91 @@ export function newColumnKey(): string {
   return `col-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
+export function newSheetId(): string {
+  return `sheet-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
 export function emptyRow(columns: Column[]): Row {
   return blankRow(columns);
+}
+
+/** 시드 데이터로 시트 하나를 담은 워크스페이스 */
+function seedWorkspace(): Workspace {
+  const data = buildSeedData();
+  const sheet: Sheet = {
+    id: newSheetId(),
+    name: "협찬 관리",
+    columns: cloneColumns(data.columns),
+    rows: data.rows,
+  };
+  return { sheets: [sheet], activeId: sheet.id };
+}
+
+/** 기본 컬럼 + 빈 행으로 새 시트 생성 */
+export function createBlankSheet(name: string): Sheet {
+  const columns = cloneColumns(COLUMNS);
+  return {
+    id: newSheetId(),
+    name,
+    columns,
+    rows: padRows([], columns),
+  };
+}
+
+function wrapSheetData(data: SheetData, name: string): Workspace {
+  const sheet: Sheet = {
+    id: newSheetId(),
+    name,
+    columns: cloneColumns(data.columns),
+    rows: data.rows,
+  };
+  return { sheets: [sheet], activeId: sheet.id };
+}
+
+/**
+ * 워크스페이스를 불러온다. v2(단일 시트)·v1(행만)에서 자동 마이그레이션.
+ */
+export function loadWorkspace(): Workspace {
+  if (typeof window === "undefined") return seedWorkspace();
+  try {
+    const raw = window.localStorage.getItem(WS_KEY);
+    if (raw) {
+      const ws = JSON.parse(raw) as Workspace;
+      if (ws && Array.isArray(ws.sheets) && ws.sheets.length > 0) {
+        const activeId = ws.sheets.some((s) => s.id === ws.activeId)
+          ? ws.activeId
+          : ws.sheets[0].id;
+        return { sheets: ws.sheets, activeId };
+      }
+    }
+    const v2 = window.localStorage.getItem(V2_KEY);
+    if (v2) {
+      const parsed = JSON.parse(v2) as SheetData;
+      if (parsed && Array.isArray(parsed.columns) && Array.isArray(parsed.rows)) {
+        return wrapSheetData(parsed, "협찬 관리");
+      }
+    }
+    const v1 = window.localStorage.getItem(V1_KEY);
+    if (v1) {
+      const rows = JSON.parse(v1) as Row[];
+      if (Array.isArray(rows)) {
+        return wrapSheetData(
+          { columns: COLUMNS, rows: padRows(rows, COLUMNS) },
+          "협찬 관리",
+        );
+      }
+    }
+  } catch {
+    // 손상된 데이터는 무시하고 시드로 시작
+  }
+  return seedWorkspace();
+}
+
+export function saveWorkspace(ws: Workspace): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(WS_KEY, JSON.stringify(ws));
+  } catch {
+    // 저장 실패는 조용히 무시 (용량 초과 등)
+  }
 }

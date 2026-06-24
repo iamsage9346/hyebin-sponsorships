@@ -30,5 +30,15 @@ export const TAG_COLORS: TagColor[] = [
   "gray",
 ];
 
+/** 캘린더의 날짜 컬럼(입금일·업로드 등)별 이벤트 색상 */
+export const EVENT_COLORS: { chip: string; dot: string }[] = [
+  { chip: "bg-blue-500 text-white", dot: "bg-blue-500" },
+  { chip: "bg-emerald-500 text-white", dot: "bg-emerald-500" },
+  { chip: "bg-amber-500 text-white", dot: "bg-amber-500" },
+  { chip: "bg-violet-500 text-white", dot: "bg-violet-500" },
+  { chip: "bg-rose-500 text-white", dot: "bg-rose-500" },
+  { chip: "bg-cyan-600 text-white", dot: "bg-cyan-600" },
+];
+
 /** "미촬영"처럼 강조가 필요한 행 배경용 (연빨강) */
 export const ROW_HIGHLIGHT = "bg-red-50/60";

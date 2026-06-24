@@ -8,11 +8,19 @@ import type {
   FilterState,
   Row,
   SelectOption,
-  SheetData,
+  Sheet,
   SortState,
+  Workspace,
 } from "@/lib/types";
 import { TAG_COLORS } from "@/lib/colors";
-import { loadData, saveData, emptyRow, newColumnKey, newRowId } from "@/lib/storage";
+import {
+  loadWorkspace,
+  saveWorkspace,
+  createBlankSheet,
+  emptyRow,
+  newColumnKey,
+  newRowId,
+} from "@/lib/storage";
 import {
   applyFilter,
   applySort,
@@ -23,23 +31,38 @@ import {
 } from "@/lib/sheet";
 import { SpreadsheetTable } from "@/components/SpreadsheetTable";
 import { FilterBar } from "@/components/FilterBar";
+import { CalendarView } from "@/components/CalendarView";
+import { SheetTabs } from "@/components/SheetTabs";
 
 export default function Page() {
-  const [data, setData] = useState<SheetData | null>(null);
+  const [ws, setWs] = useState<Workspace | null>(null);
   const [filter, setFilter] = useState<FilterState>(emptyFilter());
   const [filterKeys, setFilterKeys] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);
 
   useEffect(() => {
-    setData(loadData());
+    setWs(loadWorkspace());
   }, []);
 
   useEffect(() => {
-    if (data) saveData(data);
-  }, [data]);
+    if (ws) saveWorkspace(ws);
+  }, [ws]);
 
-  const columns = useMemo(() => data?.columns ?? [], [data]);
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const activeId = ws?.activeId ?? "";
+
+  // 시트 전환 시 필터/정렬 초기화
+  useEffect(() => {
+    setFilter(emptyFilter());
+    setFilterKeys([]);
+    setSort(null);
+  }, [activeId]);
+
+  const activeSheet = useMemo(
+    () => ws?.sheets.find((s) => s.id === ws.activeId) ?? null,
+    [ws],
+  );
+  const columns = useMemo(() => activeSheet?.columns ?? [], [activeSheet]);
+  const rows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
 
   const displayRows = useMemo(() => {
     const filtered = applyFilter(rows, columns, filter);
@@ -51,153 +74,200 @@ export default function Page() {
     [rows, displayRows],
   );
 
+  const updateSheet = useCallback((updater: (s: Sheet) => Sheet) => {
+    setWs((w) =>
+      w
+        ? {
+            ...w,
+            sheets: w.sheets.map((s) => (s.id === w.activeId ? updater(s) : s)),
+          }
+        : w,
+    );
+  }, []);
+
   // ----- 셀 -----
   const onCellChange = useCallback(
     (rowId: string, key: string, value: CellValue) => {
-      setData((d) =>
-        d
-          ? {
-              ...d,
-              rows: d.rows.map((r) => (r.id === rowId ? { ...r, [key]: value } : r)),
-            }
-          : d,
-      );
+      updateSheet((s) => ({
+        ...s,
+        rows: s.rows.map((r) => (r.id === rowId ? { ...r, [key]: value } : r)),
+      }));
     },
-    [],
+    [updateSheet],
   );
 
   // ----- 행 -----
   const onAddRow = useCallback(() => {
-    setData((d) => (d ? { ...d, rows: [...d.rows, emptyRow(d.columns)] } : d));
-  }, []);
+    updateSheet((s) => ({ ...s, rows: [...s.rows, emptyRow(s.columns)] }));
+  }, [updateSheet]);
 
-  const onDeleteRow = useCallback((id: string) => {
-    setData((d) => (d ? { ...d, rows: d.rows.filter((r) => r.id !== id) } : d));
-  }, []);
+  const onDeleteRow = useCallback(
+    (id: string) => {
+      updateSheet((s) => ({ ...s, rows: s.rows.filter((r) => r.id !== id) }));
+    },
+    [updateSheet],
+  );
 
-  const onInsertRow = useCallback((id: string, where: "above" | "below") => {
-    setData((d) => {
-      if (!d) return d;
-      const idx = d.rows.findIndex((r) => r.id === id);
-      if (idx < 0) return d;
-      const at = where === "above" ? idx : idx + 1;
-      const rows = [...d.rows];
-      rows.splice(at, 0, emptyRow(d.columns));
-      return { ...d, rows };
-    });
-  }, []);
+  const onInsertRow = useCallback(
+    (id: string, where: "above" | "below") => {
+      updateSheet((s) => {
+        const idx = s.rows.findIndex((r) => r.id === id);
+        if (idx < 0) return s;
+        const at = where === "above" ? idx : idx + 1;
+        const rows = [...s.rows];
+        rows.splice(at, 0, emptyRow(s.columns));
+        return { ...s, rows };
+      });
+    },
+    [updateSheet],
+  );
 
-  const onMoveRow = useCallback((id: string, dir: "up" | "down") => {
-    setData((d) => {
-      if (!d) return d;
-      const idx = d.rows.findIndex((r) => r.id === id);
-      if (idx < 0) return d;
-      const target = dir === "up" ? idx - 1 : idx + 1;
-      if (target < 0 || target >= d.rows.length) return d;
-      const rows = [...d.rows];
-      [rows[idx], rows[target]] = [rows[target], rows[idx]];
-      return { ...d, rows };
-    });
-  }, []);
+  const onMoveRow = useCallback(
+    (id: string, dir: "up" | "down") => {
+      updateSheet((s) => {
+        const idx = s.rows.findIndex((r) => r.id === id);
+        if (idx < 0) return s;
+        const target = dir === "up" ? idx - 1 : idx + 1;
+        if (target < 0 || target >= s.rows.length) return s;
+        const rows = [...s.rows];
+        [rows[idx], rows[target]] = [rows[target], rows[idx]];
+        return { ...s, rows };
+      });
+    },
+    [updateSheet],
+  );
 
-  const onDuplicateRow = useCallback((id: string) => {
-    setData((d) => {
-      if (!d) return d;
-      const idx = d.rows.findIndex((r) => r.id === id);
-      if (idx < 0) return d;
-      const copy: Row = { ...d.rows[idx], id: newRowId() };
-      const rows = [...d.rows];
-      rows.splice(idx + 1, 0, copy);
-      return { ...d, rows };
-    });
-  }, []);
+  const onDuplicateRow = useCallback(
+    (id: string) => {
+      updateSheet((s) => {
+        const idx = s.rows.findIndex((r) => r.id === id);
+        if (idx < 0) return s;
+        const copy: Row = { ...s.rows[idx], id: newRowId() };
+        const rows = [...s.rows];
+        rows.splice(idx + 1, 0, copy);
+        return { ...s, rows };
+      });
+    },
+    [updateSheet],
+  );
 
   // ----- 컬럼 -----
-  const onRenameColumn = useCallback((key: string, label: string) => {
-    setData((d) =>
-      d
-        ? {
-            ...d,
-            columns: d.columns.map((c) => (c.key === key ? { ...c, label } : c)),
-          }
-        : d,
-    );
-  }, []);
+  const onRenameColumn = useCallback(
+    (key: string, label: string) => {
+      updateSheet((s) => ({
+        ...s,
+        columns: s.columns.map((c) => (c.key === key ? { ...c, label } : c)),
+      }));
+    },
+    [updateSheet],
+  );
 
-  const onChangeColumnType = useCallback((key: string, type: ColumnType) => {
-    setData((d) => {
-      if (!d) return d;
-      const columns = d.columns.map((c) => {
-        if (c.key !== key) return c;
-        if (type === "select" && (!c.options || c.options.length === 0)) {
-          // 기존 셀 값을 모아 자동으로 옵션(태그) 생성
-          const seen: string[] = [];
-          for (const row of d.rows) {
-            const v = row[key];
-            if (typeof v === "string" && v.trim() !== "" && !seen.includes(v)) {
-              seen.push(v);
+  const onChangeColumnType = useCallback(
+    (key: string, type: ColumnType) => {
+      updateSheet((s) => {
+        const columns = s.columns.map((c) => {
+          if (c.key !== key) return c;
+          if (type === "select" && (!c.options || c.options.length === 0)) {
+            const seen: string[] = [];
+            for (const row of s.rows) {
+              const v = row[key];
+              if (typeof v === "string" && v.trim() !== "" && !seen.includes(v)) {
+                seen.push(v);
+              }
             }
+            const options: SelectOption[] = seen.map((value, i) => ({
+              value,
+              color: TAG_COLORS[i % TAG_COLORS.length],
+            }));
+            return { ...c, type, options };
           }
-          const options: SelectOption[] = seen.map((value, i) => ({
-            value,
-            color: TAG_COLORS[i % TAG_COLORS.length],
-          }));
-          return { ...c, type, options };
-        }
-        return { ...c, type };
+          return { ...c, type };
+        });
+        return { ...s, columns };
       });
-      return { ...d, columns };
-    });
-  }, []);
+    },
+    [updateSheet],
+  );
 
   const onSetColumnOptions = useCallback(
     (key: string, options: SelectOption[]) => {
-      setData((d) =>
-        d
-          ? {
-              ...d,
-              columns: d.columns.map((c) =>
-                c.key === key ? { ...c, options } : c,
-              ),
-            }
-          : d,
-      );
+      updateSheet((s) => ({
+        ...s,
+        columns: s.columns.map((c) => (c.key === key ? { ...c, options } : c)),
+      }));
     },
-    [],
+    [updateSheet],
   );
 
-  const onInsertColumn = useCallback((key: string, side: "left" | "right") => {
-    setData((d) => {
-      if (!d) return d;
-      const idx = d.columns.findIndex((c) => c.key === key);
-      if (idx < 0) return d;
-      const at = side === "left" ? idx : idx + 1;
-      const col: Column = {
-        key: newColumnKey(),
-        label: "새 컬럼",
-        type: "text",
-        width: 120,
-      };
-      const columns = [...d.columns];
-      columns.splice(at, 0, col);
-      const rows = d.rows.map((r) => ({ ...r, [col.key]: null }));
-      return { columns, rows };
+  const onResizeColumn = useCallback(
+    (key: string, width: number) => {
+      updateSheet((s) => ({
+        ...s,
+        columns: s.columns.map((c) => (c.key === key ? { ...c, width } : c)),
+      }));
+    },
+    [updateSheet],
+  );
+
+  const onInsertColumn = useCallback(
+    (key: string, side: "left" | "right") => {
+      updateSheet((s) => {
+        const idx = s.columns.findIndex((c) => c.key === key);
+        if (idx < 0) return s;
+        const at = side === "left" ? idx : idx + 1;
+        const col: Column = {
+          key: newColumnKey(),
+          label: "새 컬럼",
+          type: "text",
+          width: 120,
+        };
+        const columns = [...s.columns];
+        columns.splice(at, 0, col);
+        const rows = s.rows.map((r) => ({ ...r, [col.key]: null }));
+        return { ...s, columns, rows };
+      });
+    },
+    [updateSheet],
+  );
+
+  const onDeleteColumn = useCallback(
+    (key: string) => {
+      updateSheet((s) => ({
+        ...s,
+        columns: s.columns.filter((c) => c.key !== key),
+      }));
+      removeFilterFor(key);
+    },
+    [updateSheet],
+  );
+
+  // ----- 시트 -----
+  const onSelectSheet = useCallback((id: string) => {
+    setWs((w) => (w ? { ...w, activeId: id } : w));
+  }, []);
+
+  const onAddSheet = useCallback(() => {
+    setWs((w) => {
+      if (!w) return w;
+      const sheet = createBlankSheet(`시트 ${w.sheets.length + 1}`);
+      return { sheets: [...w.sheets, sheet], activeId: sheet.id };
     });
   }, []);
 
-  const onDeleteColumn = useCallback((key: string) => {
-    setData((d) =>
-      d ? { ...d, columns: d.columns.filter((c) => c.key !== key) } : d,
+  const onRenameSheet = useCallback((id: string, name: string) => {
+    setWs((w) =>
+      w
+        ? { ...w, sheets: w.sheets.map((s) => (s.id === id ? { ...s, name } : s)) }
+        : w,
     );
-    setFilterKeys((keys) => keys.filter((k) => k !== key));
-    setFilter((f) => {
-      const selected = { ...f.selected };
-      const search = { ...f.search };
-      const range = { ...f.range };
-      delete selected[key];
-      delete search[key];
-      delete range[key];
-      return { selected, search, range };
+  }, []);
+
+  const onDeleteSheet = useCallback((id: string) => {
+    setWs((w) => {
+      if (!w || w.sheets.length <= 1) return w;
+      const sheets = w.sheets.filter((s) => s.id !== id);
+      const activeId = w.activeId === id ? sheets[0].id : w.activeId;
+      return { sheets, activeId };
     });
   }, []);
 
@@ -211,11 +281,7 @@ export default function Page() {
   }, []);
 
   // ----- 필터 -----
-  const onAddFilterKey = useCallback((key: string) => {
-    setFilterKeys((keys) => (keys.includes(key) ? keys : [...keys, key]));
-  }, []);
-
-  const onRemoveFilterKey = useCallback((key: string) => {
+  const removeFilterFor = (key: string) => {
     setFilterKeys((keys) => keys.filter((k) => k !== key));
     setFilter((f) => {
       const selected = { ...f.selected };
@@ -226,6 +292,14 @@ export default function Page() {
       delete range[key];
       return { selected, search, range };
     });
+  };
+
+  const onAddFilterKey = useCallback((key: string) => {
+    setFilterKeys((keys) => (keys.includes(key) ? keys : [...keys, key]));
+  }, []);
+
+  const onRemoveFilterKey = useCallback((key: string) => {
+    removeFilterFor(key);
   }, []);
 
   const onSelectFilter = useCallback((key: string, values: string[]) => {
@@ -248,7 +322,7 @@ export default function Page() {
     setFilterKeys([]);
   }, []);
 
-  if (!data) {
+  if (!ws || !activeSheet) {
     return (
       <main className="flex min-h-screen items-center justify-center text-gray-400">
         불러오는 중…
@@ -259,22 +333,30 @@ export default function Page() {
   const filterActive = hasActiveFilter(filter);
 
   return (
-    <main className="mx-auto max-w-[1500px] px-4 py-6">
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold">광고 협찬 관리</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          셀을 클릭해 수정하고 Enter·Tab·방향키로 이동하세요. 변경 사항은 자동
-          저장됩니다.
-        </p>
-        <p className="mt-1 text-xs text-gray-400">
-          수식: 셀에 <code className="rounded bg-gray-100 px-1">=D*0.033</code>{" "}
-          (같은 행 D열) · <code className="rounded bg-gray-100 px-1">=D2*0.033</code>{" "}
-          (특정 셀) · <code className="rounded bg-gray-100 px-1">=SUM(D1:D100)</code>{" "}
-          처럼 입력하면 계산됩니다. (열 문자는 헤더의 회색 배지 참고)
+    <main className="mx-auto max-w-[1500px] px-3 py-5 sm:px-4 sm:py-6">
+      <header className="mb-3">
+        <h1 className="text-xl font-bold sm:text-2xl">광고 협찬 관리</h1>
+        <p className="mt-1 hidden text-xs text-gray-400 sm:block">
+          수식: <code className="rounded bg-gray-100 px-1">=D*0.033</code> (같은 행
+          D열) · <code className="rounded bg-gray-100 px-1">=D2*0.033</code> · 수식
+          입력 중 다른 셀을 클릭·드래그하면 참조가 들어갑니다.
         </p>
       </header>
 
-      <section className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-4">
+        <SheetTabs
+          sheets={ws.sheets}
+          activeId={ws.activeId}
+          onSelect={onSelectSheet}
+          onAdd={onAddSheet}
+          onRename={onRenameSheet}
+          onDelete={onDeleteSheet}
+        />
+      </div>
+
+      <CalendarView columns={columns} rows={rows} />
+
+      <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <SummaryCard label="광고비 총합" value={`₩ ${formatWon(summary.feeTotal)}`} />
         <SummaryCard
           label="입금완료 합계"
@@ -337,6 +419,7 @@ export default function Page() {
         onRenameColumn={onRenameColumn}
         onChangeColumnType={onChangeColumnType}
         onSetColumnOptions={onSetColumnOptions}
+        onResizeColumn={onResizeColumn}
         onInsertColumn={onInsertColumn}
         onDeleteColumn={onDeleteColumn}
         onInsertRow={onInsertRow}
@@ -374,9 +457,11 @@ function SummaryCard({
         ? "text-red-600"
         : "text-gray-900";
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 sm:px-4 sm:py-3">
       <div className="text-xs text-gray-500">{label}</div>
-      <div className={`mt-1 text-lg font-bold ${valueColor}`}>{value}</div>
+      <div className={`mt-0.5 text-base font-bold sm:text-lg ${valueColor}`}>
+        {value}
+      </div>
     </div>
   );
 }

@@ -33,6 +33,18 @@ export interface SheetData {
   rows: Row[];
 }
 
+/** 이름이 있는 하나의 시트 */
+export interface Sheet extends SheetData {
+  id: string;
+  name: string;
+}
+
+/** 여러 시트를 담는 워크스페이스 */
+export interface Workspace {
+  sheets: Sheet[];
+  activeId: string;
+}
+
 /** 컬럼별 필터 상태 */
 export interface FilterState {
   /** select 컬럼: 선택된 옵션 값들 (비어있으면 전체) */
