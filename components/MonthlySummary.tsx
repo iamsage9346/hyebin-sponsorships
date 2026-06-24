@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Column, Row } from "@/lib/types";
 import { parseDate } from "@/lib/date";
 import { formatWon } from "@/lib/sheet";
@@ -8,22 +8,13 @@ import { formatWon } from "@/lib/sheet";
 interface Props {
   columns: Column[];
   rows: Row[];
-  /** 월을 나누는 기준 날짜 컬럼 key (없으면 비활성) */
+  /** 월을 나누는 기준 날짜 컬럼 key */
   dateKey: string | null;
-  /** 현재 필터로 선택된 월 (예: "2026.06") */
-  activeMonth: string | null;
-  onPickMonth: (month: string) => void;
+  year: number;
+  month: number; // 0-based
+  isFiltered: boolean;
+  onToggleFilter: () => void;
 }
-
-interface Group {
-  key: string; // "2026.06" 또는 "미분류"
-  fee: number;
-  paid: number;
-  unpaid: number;
-  count: number;
-}
-
-const UNCLASSIFIED = "미분류";
 
 function isFilled(row: Row): boolean {
   for (const k in row) {
@@ -34,156 +25,86 @@ function isFilled(row: Row): boolean {
   return false;
 }
 
+/** 캘린더가 보고 있는 달의 정산 요약 (캘린더 이동에 따라 바뀜) */
 export function MonthlySummary({
   columns,
   rows,
   dateKey,
-  activeMonth,
-  onPickMonth,
+  year,
+  month,
+  isFiltered,
+  onToggleFilter,
 }: Props) {
-  const [open, setOpen] = useState(true);
-
-  const groups = useMemo(() => {
-    const map = new Map<string, Group>();
+  const stat = useMemo(() => {
+    let fee = 0;
+    let paid = 0;
+    let unpaid = 0;
+    let count = 0;
     for (const row of rows) {
       if (!isFilled(row)) continue;
       const d =
         dateKey && typeof row[dateKey] === "string"
           ? parseDate(row[dateKey] as string)
           : null;
-      const key = d
-        ? `${d.y}.${String(d.m + 1).padStart(2, "0")}`
-        : UNCLASSIFIED;
-      const g = map.get(key) ?? { key, fee: 0, paid: 0, unpaid: 0, count: 0 };
-      const fee = Number(row.adFee);
-      if (!Number.isNaN(fee) && row.adFee !== null && row.adFee !== "") {
-        g.fee += fee;
-        if (row.paymentStatus === "입금완료") g.paid += fee;
-        else if (row.paymentStatus === "미입금") g.unpaid += fee;
+      if (!d || d.y !== year || d.m !== month) continue;
+      count += 1;
+      const f = Number(row.adFee);
+      if (!Number.isNaN(f) && row.adFee !== null && row.adFee !== "") {
+        fee += f;
+        if (row.paymentStatus === "입금완료") paid += f;
+        else if (row.paymentStatus === "미입금") unpaid += f;
       }
-      g.count += 1;
-      map.set(key, g);
     }
-    const arr = Array.from(map.values());
-    arr.sort((a, b) => {
-      if (a.key === UNCLASSIFIED) return 1;
-      if (b.key === UNCLASSIFIED) return -1;
-      return a.key.localeCompare(b.key);
-    });
-    return arr;
-  }, [rows, dateKey]);
+    return { fee, paid, unpaid, count };
+  }, [rows, dateKey, year, month]);
 
-  const totals = useMemo(
-    () =>
-      groups.reduce(
-        (acc, g) => ({
-          fee: acc.fee + g.fee,
-          paid: acc.paid + g.paid,
-          unpaid: acc.unpaid + g.unpaid,
-          count: acc.count + g.count,
-        }),
-        { fee: 0, paid: 0, unpaid: 0, count: 0 },
-      ),
-    [groups],
-  );
-
-  const dateColLabel =
-    columns.find((c) => c.key === dateKey)?.label ?? "입금일";
+  const dateColLabel = columns.find((c) => c.key === dateKey)?.label ?? "날짜";
 
   return (
     <section className="mb-4 rounded-2xl border border-pink-100 bg-white px-3 py-3 shadow-sm shadow-pink-50 sm:px-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-bold sm:text-base">
-          월별 정산{" "}
+          {year}.{String(month + 1).padStart(2, "0")} 정산{" "}
           <span className="font-normal text-gray-400">({dateColLabel} 기준)</span>
         </h2>
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+          onClick={onToggleFilter}
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+            isFiltered
+              ? "bg-pink-500 text-white"
+              : "border border-gray-300 text-gray-500 hover:bg-gray-50"
+          }`}
         >
-          {open ? "접기" : "펼치기"}
+          {isFiltered ? "전체 보기" : "이 달만 보기"}
         </button>
       </div>
 
-      {open && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[480px] text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs text-gray-500">
-                <th className="px-2 py-1.5 text-left font-medium">월</th>
-                <th className="px-2 py-1.5 text-right font-medium">광고비</th>
-                <th className="px-2 py-1.5 text-right font-medium">입금완료</th>
-                <th className="px-2 py-1.5 text-right font-medium">미입금</th>
-                <th className="px-2 py-1.5 text-right font-medium">건수</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-2 py-6 text-center text-gray-400">
-                    데이터가 없습니다.
-                  </td>
-                </tr>
-              )}
-              {groups.map((g) => {
-                const clickable = g.key !== UNCLASSIFIED;
-                const active = activeMonth === g.key;
-                return (
-                  <tr
-                    key={g.key}
-                    onClick={() => clickable && onPickMonth(g.key)}
-                    className={`border-b border-gray-100 ${
-                      clickable ? "cursor-pointer hover:bg-blue-50" : ""
-                    } ${active ? "bg-blue-50" : ""}`}
-                  >
-                    <td className="px-2 py-1.5 font-medium">
-                      {g.key}
-                      {active && <span className="ml-1 text-xs text-blue-500">●</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
-                      {formatWon(g.fee)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-green-600">
-                      {formatWon(g.paid)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-red-600">
-                      {formatWon(g.unpaid)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
-                      {g.count}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            {groups.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-gray-200 font-bold">
-                  <td className="px-2 py-1.5">합계</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {formatWon(totals.fee)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-green-600">
-                    {formatWon(totals.paid)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-red-600">
-                    {formatWon(totals.unpaid)}
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">
-                    {totals.count}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-          {dateKey === null && (
-            <p className="mt-2 text-xs text-gray-400">
-              날짜 컬럼이 없어 월을 나눌 수 없습니다.
-            </p>
-          )}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="광고비" value={formatWon(stat.fee)} />
+        <Stat label="입금완료" value={formatWon(stat.paid)} color="text-green-600" />
+        <Stat label="미입금" value={formatWon(stat.unpaid)} color="text-rose-500" />
+        <Stat label="건수" value={`${stat.count}`} color="text-gray-700" />
+      </div>
     </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color = "text-gray-900",
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
+  return (
+    <div className="rounded-xl bg-gray-50 px-3 py-2">
+      <div className="text-xs text-gray-400">{label}</div>
+      <div className={`mt-0.5 text-sm font-bold tabular-nums sm:text-base ${color}`}>
+        {value}
+      </div>
+    </div>
   );
 }

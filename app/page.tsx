@@ -123,13 +123,22 @@ export default function Page() {
   const columns = useMemo(() => activeSheet?.columns ?? [], [activeSheet]);
   const rows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
 
-  // 월별 정산 기준 날짜 컬럼 (입금일 우선)
+  // 캘린더/월별정산이 함께 보는 월
+  const [viewMonth, setViewMonth] = useState(() => {
+    const n = new Date();
+    return { y: n.getFullYear(), m: n.getMonth() };
+  });
+
+  // 월별 정산 기준 날짜 컬럼 (업로드 우선)
   const monthDateKey = useMemo(() => {
-    const pay = columns.find((c) => c.key === "paymentDate");
-    if (pay) return pay.key;
+    const up = columns.find((c) => c.key === "uploadDate");
+    if (up) return up.key;
     return columns.find((c) => c.type === "date")?.key ?? null;
   }, [columns]);
-  const activeMonth = monthDateKey ? filter.search[monthDateKey] ?? null : null;
+  const monthStr = `${viewMonth.y}.${String(viewMonth.m + 1).padStart(2, "0")}`;
+  const monthFiltered = monthDateKey
+    ? filter.search[monthDateKey] === monthStr
+    : false;
 
   const displayRows = useMemo(() => {
     const filtered = applyFilter(rows, columns, filter);
@@ -483,7 +492,12 @@ export default function Page() {
         />
       </div>
 
-      <CalendarView columns={columns} rows={rows} />
+      <CalendarView
+        columns={columns}
+        rows={rows}
+        view={viewMonth}
+        onViewChange={setViewMonth}
+      />
 
       <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <SummaryCard
@@ -520,8 +534,10 @@ export default function Page() {
         columns={columns}
         rows={rows}
         dateKey={monthDateKey}
-        activeMonth={activeMonth}
-        onPickMonth={onPickMonth}
+        year={viewMonth.y}
+        month={viewMonth.m}
+        isFiltered={monthFiltered}
+        onToggleFilter={() => onPickMonth(monthStr)}
       />
 
       <div className="mb-2 flex flex-wrap items-center gap-2">

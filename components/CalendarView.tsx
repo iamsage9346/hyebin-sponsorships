@@ -11,6 +11,8 @@ const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 interface Props {
   columns: Column[];
   rows: Row[];
+  view: { y: number; m: number };
+  onViewChange: (v: { y: number; m: number }) => void;
 }
 
 interface Ev {
@@ -22,9 +24,8 @@ interface Ev {
 }
 
 /** 상단의 큰 월 캘린더 — 날짜 컬럼(입금일·업로드 등)을 색상별 이벤트로 표시 */
-export function CalendarView({ columns, rows }: Props) {
+export function CalendarView({ columns, rows, view, onViewChange }: Props) {
   const now = new Date();
-  const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
@@ -80,14 +81,14 @@ export function CalendarView({ columns, rows }: Props) {
 
   const prev = () => {
     setSelectedDay(null);
-    setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }));
+    onViewChange(view.m === 0 ? { y: view.y - 1, m: 11 } : { y: view.y, m: view.m - 1 });
   };
   const next = () => {
     setSelectedDay(null);
-    setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }));
+    onViewChange(view.m === 11 ? { y: view.y + 1, m: 0 } : { y: view.y, m: view.m + 1 });
   };
   const goToday = () => {
-    setView({ y: now.getFullYear(), m: now.getMonth() });
+    onViewChange({ y: now.getFullYear(), m: now.getMonth() });
     setSelectedDay(now.getDate());
   };
 
