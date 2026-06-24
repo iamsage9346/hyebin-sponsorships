@@ -1,6 +1,10 @@
 import type { Column, Row, SheetData } from "./types";
 
-export const COLUMNS: Column[] = [
+/** 기본으로 열어두는 행·열 개수 (스프레드시트처럼 스크롤) */
+export const TOTAL_ROWS = 100;
+export const TOTAL_COLS = 100;
+
+const NAMED_COLUMNS: Column[] = [
   { key: "adDate", label: "광고 날짜", type: "date", width: 110 },
   { key: "brand", label: "브랜드", type: "text", width: 130 },
   {
@@ -42,6 +46,29 @@ export const COLUMNS: Column[] = [
   { key: "note", label: "비고", type: "text", width: 160 },
 ];
 
+/** 스프레드시트 컬럼 문자 (A, B, ... Z, AA ...) */
+function colLetter(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    n--;
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s;
+}
+
+/** 이름이 정해진 컬럼 뒤에 빈 텍스트 컬럼을 채워 총 TOTAL_COLS개로 만든다 */
+const EXTRA_COLUMNS: Column[] = Array.from(
+  { length: Math.max(0, TOTAL_COLS - NAMED_COLUMNS.length) },
+  (_, i): Column => {
+    const index = NAMED_COLUMNS.length + i;
+    return { key: `c${index}`, label: colLetter(index), type: "text", width: 90 };
+  },
+);
+
+export const COLUMNS: Column[] = [...NAMED_COLUMNS, ...EXTRA_COLUMNS];
+
 type SeedRow = Omit<Row, "id">;
 
 const SEED_ROWS: SeedRow[] = [
@@ -69,14 +96,25 @@ function makeId(i: number): string {
   return `seed-${i}-${i.toString(36)}`;
 }
 
+/** 모든 컬럼 키를 가진 빈 행 */
+function blankRow(id: string): Row {
+  const row: Row = { id };
+  for (const col of COLUMNS) row[col.key] = null;
+  return row;
+}
+
 export function buildSeedData(): SheetData {
-  const rows: Row[] = SEED_ROWS.map((r, i) => {
-    const row: Row = { id: makeId(i) };
-    for (const col of COLUMNS) {
-      const v = r[col.key];
-      row[col.key] = v === undefined ? null : v;
+  const rows: Row[] = [];
+  for (let i = 0; i < TOTAL_ROWS; i++) {
+    const seed = SEED_ROWS[i];
+    const row = blankRow(makeId(i));
+    if (seed) {
+      for (const col of COLUMNS) {
+        const v = seed[col.key];
+        if (v !== undefined) row[col.key] = v;
+      }
     }
-    return row;
-  });
+    rows.push(row);
+  }
   return { columns: COLUMNS, rows };
 }
