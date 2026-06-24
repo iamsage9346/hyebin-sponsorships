@@ -21,6 +21,7 @@ import {
   newColumnKey,
   newRowId,
 } from "@/lib/storage";
+import { buildSeedData } from "@/lib/seed";
 import { fetchRemote, saveRemote } from "@/lib/remote";
 import {
   applyFilter,
@@ -221,6 +222,16 @@ export default function Page() {
     },
     [updateSheet],
   );
+
+  const onLoadSeed = useCallback(() => {
+    if (
+      !confirm(
+        "현재 시트의 행을 기초 데이터(VOVA·폴리오 등 18건)로 채울까요?\n기존에 입력한 행은 대체됩니다.",
+      )
+    )
+      return;
+    updateSheet((s) => ({ ...s, rows: buildSeedData().rows }));
+  }, [updateSheet]);
 
   const onDuplicateRow = useCallback(
     (id: string) => {
@@ -566,13 +577,21 @@ export default function Page() {
         onDeleteRow={onDeleteRow}
       />
 
-      <div className="mt-2">
+      <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
           onClick={onAddRow}
           className="rounded-full px-3 py-1 text-sm font-medium text-pink-500 hover:bg-pink-50"
         >
           + 행 추가
+        </button>
+        <button
+          type="button"
+          onClick={onLoadSeed}
+          className="rounded-full px-3 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          title="VOVA·폴리오 등 기초 데이터 18건으로 채우기"
+        >
+          📥 기초 데이터 채우기
         </button>
       </div>
     </main>
