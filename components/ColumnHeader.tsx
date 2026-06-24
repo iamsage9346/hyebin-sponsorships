@@ -82,7 +82,11 @@ export function ColumnHeader({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-7 z-30 w-64 rounded-md border border-gray-200 bg-white p-2 text-gray-700 shadow-lg">
+        <div
+          onKeyDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute left-0 top-7 z-30 w-64 rounded-md border border-gray-200 bg-white p-2 text-gray-700 shadow-lg"
+        >
           <input
             autoFocus
             value={name}
