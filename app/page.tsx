@@ -447,11 +447,16 @@ export default function Page() {
 
   return (
     <main className="mx-auto max-w-[1500px] px-3 py-5 sm:px-4 sm:py-6">
-      <header className="mb-3">
-        <h1 className="text-xl font-bold sm:text-2xl">광고 협찬 관리</h1>
+      <header className="mb-4 text-center sm:text-left">
+        <h1 className="text-2xl font-extrabold tracking-tight text-pink-500 sm:text-3xl">
+          🎀 혜빈이의 협찬 관리
+        </h1>
+        <p className="mt-1 text-sm font-medium text-pink-400/80">
+          오늘도 협찬 정리 화이팅! 💖
+        </p>
         <p className="mt-1 hidden text-xs text-gray-400 sm:block">
-          수식: <code className="rounded bg-gray-100 px-1">=D*0.033</code> (같은 행
-          D열) · <code className="rounded bg-gray-100 px-1">=D2*0.033</code> · 수식
+          수식: <code className="rounded bg-pink-50 px-1">=D*0.033</code> (같은 행
+          D열) · <code className="rounded bg-pink-50 px-1">=D2*0.033</code> · 수식
           입력 중 다른 셀을 클릭·드래그하면 참조가 들어갑니다.
         </p>
       </header>
@@ -470,24 +475,33 @@ export default function Page() {
       <CalendarView columns={columns} rows={rows} />
 
       <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <SummaryCard label="광고비 총합" value={`₩ ${formatWon(summary.feeTotal)}`} />
         <SummaryCard
+          emoji="💰"
+          label="광고비 총합"
+          value={`₩ ${formatWon(summary.feeTotal)}`}
+          tint="amber"
+        />
+        <SummaryCard
+          emoji="✅"
           label="입금완료 합계"
           value={`₩ ${formatWon(summary.paidTotal)}`}
-          accent="green"
+          tint="green"
         />
         <SummaryCard
+          emoji="⏳"
           label="미입금 합계"
           value={`₩ ${formatWon(summary.unpaidTotal)}`}
-          accent="red"
+          tint="rose"
         />
         <SummaryCard
+          emoji="📋"
           label="건수"
           value={
             filterActive
               ? `${summary.shown} / ${summary.total}`
               : `${summary.total}`
           }
+          tint="violet"
         />
       </section>
 
@@ -524,7 +538,7 @@ export default function Page() {
           <button
             type="button"
             onClick={onAddRow}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-full bg-pink-500 px-4 py-1.5 text-sm font-semibold text-white shadow-sm shadow-pink-200 hover:bg-pink-600"
           >
             + 행 추가
           </button>
@@ -556,7 +570,7 @@ export default function Page() {
         <button
           type="button"
           onClick={onAddRow}
-          className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+          className="rounded-full px-3 py-1 text-sm font-medium text-pink-500 hover:bg-pink-50"
         >
           + 행 추가
         </button>
@@ -565,25 +579,32 @@ export default function Page() {
   );
 }
 
+const TINTS: Record<string, { bg: string; value: string }> = {
+  amber: { bg: "bg-amber-50 border-amber-100", value: "text-amber-600" },
+  green: { bg: "bg-green-50 border-green-100", value: "text-green-600" },
+  rose: { bg: "bg-rose-50 border-rose-100", value: "text-rose-500" },
+  violet: { bg: "bg-violet-50 border-violet-100", value: "text-violet-600" },
+};
+
 function SummaryCard({
+  emoji,
   label,
   value,
-  accent,
+  tint,
 }: {
+  emoji: string;
   label: string;
   value: string;
-  accent?: "green" | "red";
+  tint: "amber" | "green" | "rose" | "violet";
 }) {
-  const valueColor =
-    accent === "green"
-      ? "text-green-600"
-      : accent === "red"
-        ? "text-red-600"
-        : "text-gray-900";
+  const t = TINTS[tint];
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 sm:px-4 sm:py-3">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`mt-0.5 text-base font-bold sm:text-lg ${valueColor}`}>
+    <div className={`rounded-2xl border ${t.bg} px-3 py-2.5 sm:px-4 sm:py-3`}>
+      <div className="flex items-center gap-1 text-xs font-medium text-gray-500">
+        <span className="text-sm">{emoji}</span>
+        {label}
+      </div>
+      <div className={`mt-1 text-base font-extrabold sm:text-lg ${t.value}`}>
         {value}
       </div>
     </div>

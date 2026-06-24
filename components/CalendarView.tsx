@@ -98,7 +98,7 @@ export function CalendarView({ columns, rows }: Props) {
       : "";
 
   return (
-    <section className="mb-4 rounded-lg border border-gray-200 bg-white px-1.5 py-3 sm:px-4 sm:py-4">
+    <section className="mb-4 rounded-2xl border border-pink-100 bg-white px-1.5 py-3 shadow-sm shadow-pink-50 sm:px-4 sm:py-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-1 sm:gap-2">
           <button

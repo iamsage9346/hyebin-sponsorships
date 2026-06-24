@@ -470,7 +470,7 @@ export function SpreadsheetTable(props: Props) {
         ref={containerRef}
         tabIndex={0}
         onKeyDown={onGridKeyDown}
-        className="max-h-[72vh] overflow-auto rounded-lg border border-gray-200 bg-white outline-none"
+        className="max-h-[72vh] overflow-auto rounded-2xl border border-pink-100 bg-white shadow-sm shadow-pink-50 outline-none"
       >
         <table className="border-collapse text-sm" style={{ zoom }}>
         <thead>

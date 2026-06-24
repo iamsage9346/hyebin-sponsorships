@@ -9,6 +9,7 @@ body {
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo",
     "Malgun Gothic", sans-serif;
-  background: #f7f7f5;
-  color: #37352f;
+  background: linear-gradient(180deg, #fff1f5 0%, #fdf4ff 45%, #f4f7ff 100%);
+  background-attachment: fixed;
+  color: #4a3f44;
 }

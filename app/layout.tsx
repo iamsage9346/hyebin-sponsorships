@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "광고 협찬 관리",
+  title: "혜빈이의 협찬 관리 🎀",
   description: "인스타그램 광고/협찬 진행 상황 관리 스프레드시트",
 };
 

@@ -60,10 +60,10 @@ export function SheetTabs({
         return (
           <div
             key={s.id}
-            className={`group flex shrink-0 items-center rounded-t-md border-b-2 ${
+            className={`group flex shrink-0 items-center rounded-t-xl border-b-2 ${
               active
-                ? "border-blue-600 bg-white text-gray-900"
-                : "border-transparent text-gray-500 hover:bg-gray-100"
+                ? "border-pink-500 bg-white text-pink-600"
+                : "border-transparent text-gray-400 hover:bg-pink-50"
             }`}
           >
             <button
@@ -93,7 +93,7 @@ export function SheetTabs({
       <button
         type="button"
         onClick={onAdd}
-        className="shrink-0 rounded-md px-2 py-1.5 text-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        className="shrink-0 rounded-full px-2 py-1.5 text-lg text-pink-400 hover:bg-pink-50 hover:text-pink-600"
         title="시트 추가"
       >
         +

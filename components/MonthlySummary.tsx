@@ -91,7 +91,7 @@ export function MonthlySummary({
     columns.find((c) => c.key === dateKey)?.label ?? "입금일";
 
   return (
-    <section className="mb-4 rounded-lg border border-gray-200 bg-white px-3 py-3 sm:px-4">
+    <section className="mb-4 rounded-2xl border border-pink-100 bg-white px-3 py-3 shadow-sm shadow-pink-50 sm:px-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-bold sm:text-base">
           월별 정산{" "}
