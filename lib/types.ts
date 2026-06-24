@@ -37,6 +37,8 @@ export interface SheetData {
 export interface Sheet extends SheetData {
   id: string;
   name: string;
+  /** 행 id별 높이(px). 없으면 기본 높이 */
+  rowHeights?: Record<string, number>;
 }
 
 /** 여러 시트를 담는 워크스페이스 */

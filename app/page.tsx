@@ -228,6 +228,16 @@ export default function Page() {
     [updateSheet],
   );
 
+  const onResizeRow = useCallback(
+    (rowId: string, height: number) => {
+      updateSheet((s) => ({
+        ...s,
+        rowHeights: { ...(s.rowHeights ?? {}), [rowId]: height },
+      }));
+    },
+    [updateSheet],
+  );
+
   const onInsertColumn = useCallback(
     (key: string, side: "left" | "right") => {
       updateSheet((s) => {
@@ -432,6 +442,7 @@ export default function Page() {
       <SpreadsheetTable
         columns={columns}
         rows={displayRows}
+        rowHeights={activeSheet.rowHeights}
         sort={sort}
         onCellChange={onCellChange}
         onBulkChange={onBulkChange}
@@ -440,6 +451,7 @@ export default function Page() {
         onChangeColumnType={onChangeColumnType}
         onSetColumnOptions={onSetColumnOptions}
         onResizeColumn={onResizeColumn}
+        onResizeRow={onResizeRow}
         onInsertColumn={onInsertColumn}
         onDeleteColumn={onDeleteColumn}
         onInsertRow={onInsertRow}

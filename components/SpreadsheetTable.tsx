@@ -18,6 +18,7 @@ import { ColumnHeader } from "./ColumnHeader";
 interface Props {
   columns: Column[];
   rows: Row[]; // 필터/정렬이 적용된 표시용 행
+  rowHeights?: Record<string, number>;
   sort: SortState | null;
   onCellChange: (rowId: string, key: string, value: CellValue) => void;
   onBulkChange: (
@@ -28,6 +29,7 @@ interface Props {
   onChangeColumnType: (key: string, type: ColumnType) => void;
   onSetColumnOptions: (key: string, options: SelectOption[]) => void;
   onResizeColumn: (key: string, width: number) => void;
+  onResizeRow: (rowId: string, height: number) => void;
   onInsertColumn: (key: string, side: "left" | "right") => void;
   onDeleteColumn: (key: string) => void;
   onInsertRow: (id: string, where: "above" | "below") => void;
@@ -60,6 +62,7 @@ export function SpreadsheetTable(props: Props) {
   const {
     columns,
     rows,
+    rowHeights,
     sort,
     onCellChange,
     onBulkChange,
@@ -68,6 +71,7 @@ export function SpreadsheetTable(props: Props) {
     onChangeColumnType,
     onSetColumnOptions,
     onResizeColumn,
+    onResizeRow,
     onInsertColumn,
     onDeleteColumn,
     onInsertRow,
@@ -78,6 +82,7 @@ export function SpreadsheetTable(props: Props) {
 
   const [sel, setSel] = useState<Sel | null>(null); // 활성(포커스) 셀
   const [anchor, setAnchor] = useState<Sel | null>(null); // 범위 선택 기준점
+  const [pointRange, setPointRange] = useState<{ a: Sel; f: Sel } | null>(null); // 수식 참조 마퀴
   const [editing, setEditing] = useState(false);
   const [editInit, setEditInit] = useState("");
   const [editTyped, setEditTyped] = useState(false);
@@ -110,6 +115,18 @@ export function SpreadsheetTable(props: Props) {
   }
   const boundsRef = useRef({ minR, maxR, minC, maxC });
   boundsRef.current = { minR, maxR, minC, maxC };
+
+  // 수식 참조 마퀴 경계
+  let pMinR = -1,
+    pMaxR = -1,
+    pMinC = -1,
+    pMaxC = -1;
+  if (pointRange) {
+    pMinR = Math.min(pointRange.a.r, pointRange.f.r);
+    pMaxR = Math.max(pointRange.a.r, pointRange.f.r);
+    pMinC = Math.min(pointRange.a.c, pointRange.f.c);
+    pMaxC = Math.max(pointRange.a.c, pointRange.f.c);
+  }
 
   const clamp = useCallback(
     (r: number, c: number): Sel => ({
@@ -348,6 +365,7 @@ export function SpreadsheetTable(props: Props) {
         const caret = pos + ref.length;
         inp.setSelectionRange(caret, caret);
         pointLastLenRef.current = ref.length;
+        setPointRange({ a: { r, c }, f: { r, c } });
         return;
       }
       // 2) 일반 범위 선택 드래그
@@ -382,11 +400,17 @@ export function SpreadsheetTable(props: Props) {
       const caret = start + refStr.length;
       inp.setSelectionRange(caret, caret);
       pointLastLenRef.current = refStr.length;
+      if (a) setPointRange({ a, f: { r, c } });
       return;
     }
     // 일반 범위 선택 드래그
     if (rangeDragRef.current) setSel({ r, c });
   }, []);
+
+  // 편집이 끝나면 수식 참조 마퀴 제거
+  useEffect(() => {
+    if (!editing) setPointRange(null);
+  }, [editing]);
 
   useEffect(() => {
     const up = () => {
@@ -446,11 +470,15 @@ export function SpreadsheetTable(props: Props) {
               key={row.id}
               row={row}
               rowIndex={r}
+              rowHeight={rowHeights?.[row.id]}
+              onResizeRow={onResizeRow}
               columns={columns}
               evaluator={evaluator}
               selCol={sel?.r === r ? sel.c : -1}
               rangeMinC={r >= minR && r <= maxR ? minC : -1}
               rangeMaxC={r >= minR && r <= maxR ? maxC : -1}
+              pointMinC={r >= pMinR && r <= pMaxR ? pMinC : -1}
+              pointMaxC={r >= pMinR && r <= pMaxR ? pMaxC : -1}
               editing={sel?.r === r && editing}
               editInit={sel?.r === r ? editInit : ""}
               editTyped={sel?.r === r ? editTyped : false}
@@ -489,11 +517,15 @@ type Evaluator = ReturnType<typeof makeEvaluator>;
 interface RowProps {
   row: Row;
   rowIndex: number;
+  rowHeight?: number;
+  onResizeRow: (rowId: string, height: number) => void;
   columns: Column[];
   evaluator: Evaluator;
   selCol: number;
   rangeMinC: number;
   rangeMaxC: number;
+  pointMinC: number;
+  pointMaxC: number;
   editing: boolean;
   editInit: string;
   editTyped: boolean;
@@ -514,11 +546,15 @@ interface RowProps {
 const RowView = React.memo(function RowView({
   row,
   rowIndex,
+  rowHeight,
+  onResizeRow,
   columns,
   evaluator,
   selCol,
   rangeMinC,
   rangeMaxC,
+  pointMinC,
+  pointMaxC,
   editing,
   editInit,
   editTyped,
@@ -539,15 +575,20 @@ const RowView = React.memo(function RowView({
   return (
     <tr className={`group ${highlight} hover:bg-blue-50/40`}>
       <td
-        className="sticky left-0 z-10 border-b border-r border-gray-200 bg-gray-50 px-1 text-center text-[10px] text-gray-400 group-hover:bg-blue-50/40"
-        style={{ width: 36, minWidth: 36 }}
+        className="sticky left-0 z-10 border-b border-r border-gray-200 bg-gray-50 px-1 text-center align-top text-[10px] text-gray-400 group-hover:bg-blue-50/40"
+        style={{ width: 36, minWidth: 36, height: rowHeight }}
       >
-        {rowIndex + 1}
+        <span className="leading-6">{rowIndex + 1}</span>
+        <RowResizer
+          height={rowHeight ?? 33}
+          onResize={(h) => onResizeRow(row.id, h)}
+        />
       </td>
       {columns.map((col, c) => {
         const isSel = c === selCol;
         const isEditing = isSel && editing;
         const inRange = c >= rangeMinC && c <= rangeMaxC;
+        const inPoint = c >= pointMinC && c <= pointMaxC;
         const value = row[col.key];
         const formula = !isEditing && isFormula(value);
         return (
@@ -558,13 +599,15 @@ const RowView = React.memo(function RowView({
             onMouseEnter={() => onCellMouseEnter(rowIndex, c)}
             style={{ width: col.width, minWidth: col.width }}
             className={`relative cursor-cell select-none border-b border-r border-gray-100 px-2 py-1.5 align-top ${
-              isEditing
-                ? "bg-white ring-2 ring-inset ring-blue-500"
-                : isSel
+              inPoint
+                ? "bg-blue-100/60 outline-dashed outline-2 -outline-offset-2 outline-blue-500"
+                : isEditing
                   ? "bg-white ring-2 ring-inset ring-blue-500"
-                  : inRange
-                    ? "bg-blue-100/70"
-                    : ""
+                  : isSel
+                    ? "bg-white ring-2 ring-inset ring-blue-500"
+                    : inRange
+                      ? "bg-blue-100/70"
+                      : ""
             }`}
           >
             {isEditing && col.type === "select" ? (
@@ -747,6 +790,37 @@ function ColumnResizer({
       onClick={(e) => e.stopPropagation()}
       className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-blue-400/60"
       title="드래그하여 너비 조절"
+    />
+  );
+}
+
+function RowResizer({
+  height,
+  onResize,
+}: {
+  height: number;
+  onResize: (h: number) => void;
+}) {
+  const start = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startH = height;
+    const move = (ev: MouseEvent) =>
+      onResize(Math.max(24, startH + ev.clientY - startY));
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
+  return (
+    <div
+      onMouseDown={start}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute bottom-0 left-0 z-10 h-1.5 w-full cursor-row-resize hover:bg-blue-400/60"
+      title="드래그하여 행 높이 조절"
     />
   );
 }

@@ -94,6 +94,16 @@ export interface Summary {
   unpaidTotal: number;
 }
 
+/** id 외에 값이 하나라도 채워진 행인지 */
+function isFilled(row: Row): boolean {
+  for (const k in row) {
+    if (k === "id") continue;
+    const v = row[k];
+    if (v !== null && v !== undefined && v !== "") return true;
+  }
+  return false;
+}
+
 export function computeSummary(allRows: Row[], shownRows: Row[]): Summary {
   let feeTotal = 0;
   let paidTotal = 0;
@@ -107,8 +117,8 @@ export function computeSummary(allRows: Row[], shownRows: Row[]): Summary {
     }
   }
   return {
-    total: allRows.length,
-    shown: shownRows.length,
+    total: allRows.filter(isFilled).length,
+    shown: shownRows.filter(isFilled).length,
     feeTotal,
     paidTotal,
     unpaidTotal,
