@@ -96,6 +96,25 @@ export default function Page() {
     [updateSheet],
   );
 
+  const onBulkChange = useCallback(
+    (updates: { rowId: string; key: string; value: CellValue }[]) => {
+      if (updates.length === 0) return;
+      const byRow = new Map<string, Record<string, CellValue>>();
+      for (const u of updates) {
+        const m = byRow.get(u.rowId) ?? {};
+        m[u.key] = u.value;
+        byRow.set(u.rowId, m);
+      }
+      updateSheet((s) => ({
+        ...s,
+        rows: s.rows.map((r) =>
+          byRow.has(r.id) ? { ...r, ...byRow.get(r.id) } : r,
+        ),
+      }));
+    },
+    [updateSheet],
+  );
+
   // ----- 행 -----
   const onAddRow = useCallback(() => {
     updateSheet((s) => ({ ...s, rows: [...s.rows, emptyRow(s.columns)] }));
@@ -415,6 +434,7 @@ export default function Page() {
         rows={displayRows}
         sort={sort}
         onCellChange={onCellChange}
+        onBulkChange={onBulkChange}
         onToggleSort={onToggleSort}
         onRenameColumn={onRenameColumn}
         onChangeColumnType={onChangeColumnType}

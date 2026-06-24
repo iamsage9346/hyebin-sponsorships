@@ -20,6 +20,9 @@ interface Props {
   rows: Row[]; // 필터/정렬이 적용된 표시용 행
   sort: SortState | null;
   onCellChange: (rowId: string, key: string, value: CellValue) => void;
+  onBulkChange: (
+    updates: { rowId: string; key: string; value: CellValue }[],
+  ) => void;
   onToggleSort: (key: string) => void;
   onRenameColumn: (key: string, label: string) => void;
   onChangeColumnType: (key: string, type: ColumnType) => void;
@@ -59,6 +62,7 @@ export function SpreadsheetTable(props: Props) {
     rows,
     sort,
     onCellChange,
+    onBulkChange,
     onToggleSort,
     onRenameColumn,
     onChangeColumnType,
@@ -72,7 +76,8 @@ export function SpreadsheetTable(props: Props) {
     onDeleteRow,
   } = props;
 
-  const [sel, setSel] = useState<Sel | null>(null);
+  const [sel, setSel] = useState<Sel | null>(null); // 활성(포커스) 셀
+  const [anchor, setAnchor] = useState<Sel | null>(null); // 범위 선택 기준점
   const [editing, setEditing] = useState(false);
   const [editInit, setEditInit] = useState("");
   const [editTyped, setEditTyped] = useState(false);
@@ -80,13 +85,31 @@ export function SpreadsheetTable(props: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const skipBlurRef = useRef(false);
+  const rangeDragRef = useRef(false);
 
   const selRef = useRef(sel);
   selRef.current = sel;
+  const anchorRef = useRef(anchor);
+  anchorRef.current = anchor;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const colsRef = useRef(columns);
   colsRef.current = columns;
+
+  // 선택 범위 경계 (anchor ~ sel 사각형)
+  let minR = -1,
+    maxR = -1,
+    minC = -1,
+    maxC = -1;
+  if (sel) {
+    const a = anchor ?? sel;
+    minR = Math.min(a.r, sel.r);
+    maxR = Math.max(a.r, sel.r);
+    minC = Math.min(a.c, sel.c);
+    maxC = Math.max(a.c, sel.c);
+  }
+  const boundsRef = useRef({ minR, maxR, minC, maxC });
+  boundsRef.current = { minR, maxR, minC, maxC };
 
   const clamp = useCallback(
     (r: number, c: number): Sel => ({
@@ -100,19 +123,32 @@ export function SpreadsheetTable(props: Props) {
     if (!editing) containerRef.current?.focus();
   }, [editing, sel]);
 
-  const startEdit = useCallback((initial?: string, typed?: boolean) => {
-    const s = selRef.current;
-    if (!s) return;
-    const col = colsRef.current[s.c];
-    if (col.type === "select" || col.type === "date") {
-      setEditing(true); // 팝업(드롭다운/달력)
-      return;
-    }
-    const cur = rowsRef.current[s.r]?.[col.key];
-    setEditInit(initial !== undefined ? initial : displayText(cur));
-    setEditTyped(!!typed);
-    setEditing(true);
-  }, []);
+  const editAt = useCallback(
+    (r: number, c: number, initial?: string, typed?: boolean) => {
+      const col = colsRef.current[c];
+      if (!col) return;
+      setSel({ r, c });
+      setAnchor({ r, c });
+      if (col.type === "select" || col.type === "date") {
+        setEditing(true); // 팝업(드롭다운/달력)
+        return;
+      }
+      const cur = rowsRef.current[r]?.[col.key];
+      setEditInit(initial !== undefined ? initial : displayText(cur));
+      setEditTyped(!!typed);
+      setEditing(true);
+    },
+    [],
+  );
+
+  const startEdit = useCallback(
+    (initial?: string, typed?: boolean) => {
+      const s = selRef.current;
+      if (!s) return;
+      editAt(s.r, s.c, initial, typed);
+    },
+    [editAt],
+  );
 
   const commitText = useCallback(
     (next?: Sel) => {
@@ -169,53 +205,108 @@ export function SpreadsheetTable(props: Props) {
 
   const closeEdit = useCallback(() => setEditing(false), []);
 
-  const onCellClick = useCallback(
+  const onCellDblClick = useCallback(
     (r: number, c: number) => {
-      // 수식 편집 중에는 클릭이 참조 삽입용이므로 선택 이동 무시
-      if (
-        inputRef.current &&
-        inputRef.current.value.trimStart().startsWith("=")
-      ) {
-        return;
-      }
-      const s = selRef.current;
-      if (s && s.r === r && s.c === c) {
-        startEdit();
+      if (inputRef.current?.value.trimStart().startsWith("=")) return;
+      editAt(r, c);
+    },
+    [editAt],
+  );
+
+  const move = useCallback(
+    (nr: number, nc: number, extend: boolean) => {
+      const next = clamp(nr, nc);
+      setSel(next);
+      if (extend) {
+        setAnchor((a) => a ?? selRef.current);
       } else {
-        setEditing(false);
-        setSel({ r, c });
+        setAnchor(next);
       }
     },
-    [startEdit],
+    [clamp],
   );
 
   const onGridKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (editing || !sel) return;
       const { key } = e;
+      const meta = e.metaKey || e.ctrlKey;
+
+      if (meta && key.toLowerCase() === "c") {
+        e.preventDefault();
+        const b = boundsRef.current;
+        const lines: string[] = [];
+        for (let r = b.minR; r <= b.maxR; r++) {
+          const cells: string[] = [];
+          for (let c = b.minC; c <= b.maxC; c++) {
+            cells.push(displayText(rowsRef.current[r]?.[colsRef.current[c].key]));
+          }
+          lines.push(cells.join("\t"));
+        }
+        navigator.clipboard?.writeText(lines.join("\n"));
+        return;
+      }
+      if (meta && key.toLowerCase() === "v") {
+        e.preventDefault();
+        const b = boundsRef.current;
+        navigator.clipboard?.readText().then((text) => {
+          const grid = text.replace(/\r/g, "").split("\n").map((l) => l.split("\t"));
+          if (
+            grid.length > 1 &&
+            grid[grid.length - 1].length === 1 &&
+            grid[grid.length - 1][0] === ""
+          )
+            grid.pop();
+          const updates: { rowId: string; key: string; value: CellValue }[] = [];
+          const rs = rowsRef.current;
+          const cs = colsRef.current;
+          for (let i = 0; i < grid.length; i++) {
+            const rr = b.minR + i;
+            if (rr >= rs.length) break;
+            for (let j = 0; j < grid[i].length; j++) {
+              const cc = b.minC + j;
+              if (cc >= cs.length) break;
+              updates.push({
+                rowId: rs[rr].id,
+                key: cs[cc].key,
+                value: parseValue(cs[cc], grid[i][j]),
+              });
+            }
+          }
+          onBulkChange(updates);
+        });
+        return;
+      }
+
       if (key === "ArrowUp") {
         e.preventDefault();
-        setSel(clamp(sel.r - 1, sel.c));
+        move(sel.r - 1, sel.c, e.shiftKey);
       } else if (key === "ArrowDown") {
         e.preventDefault();
-        setSel(clamp(sel.r + 1, sel.c));
+        move(sel.r + 1, sel.c, e.shiftKey);
       } else if (key === "ArrowLeft") {
         e.preventDefault();
-        setSel(clamp(sel.r, sel.c - 1));
+        move(sel.r, sel.c - 1, e.shiftKey);
       } else if (key === "ArrowRight") {
         e.preventDefault();
-        setSel(clamp(sel.r, sel.c + 1));
+        move(sel.r, sel.c + 1, e.shiftKey);
       } else if (key === "Tab") {
         e.preventDefault();
-        setSel(clamp(sel.r, sel.c + (e.shiftKey ? -1 : 1)));
+        move(sel.r, sel.c + (e.shiftKey ? -1 : 1), false);
       } else if (key === "Enter") {
         e.preventDefault();
         startEdit();
       } else if (key === "Backspace" || key === "Delete") {
         e.preventDefault();
-        const col = columns[sel.c];
-        const row = rows[sel.r];
-        if (row) onCellChange(row.id, col.key, null);
+        const b = boundsRef.current;
+        const updates: { rowId: string; key: string; value: CellValue }[] = [];
+        for (let r = b.minR; r <= b.maxR; r++) {
+          for (let c = b.minC; c <= b.maxC; c++) {
+            const row = rowsRef.current[r];
+            if (row) updates.push({ rowId: row.id, key: colsRef.current[c].key, value: null });
+          }
+        }
+        onBulkChange(updates);
       } else if (key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const col = columns[sel.c];
         if (col.type === "text" || col.type === "number") {
@@ -224,7 +315,7 @@ export function SpreadsheetTable(props: Props) {
         }
       }
     },
-    [editing, sel, clamp, startEdit, columns, rows, onCellChange],
+    [editing, sel, move, startEdit, columns, onBulkChange],
   );
 
   const evaluator = useMemo(() => makeEvaluator(columns, rows), [columns, rows]);
@@ -244,44 +335,63 @@ export function SpreadsheetTable(props: Props) {
 
   const onCellMouseDown = useCallback(
     (r: number, c: number, e: React.MouseEvent) => {
-      if (!isFormulaInput()) return;
-      e.preventDefault(); // 입력 포커스 유지 (blur 방지)
-      const inp = inputRef.current!;
-      draggingPointRef.current = true;
-      pointAnchorRef.current = { r, c };
-      const pos = inp.selectionStart ?? inp.value.length;
-      pointStartIdxRef.current = pos;
-      const ref = indexToLetters(c) + (r + 1);
-      inp.value = inp.value.slice(0, pos) + ref + inp.value.slice(pos);
-      const caret = pos + ref.length;
-      inp.setSelectionRange(caret, caret);
-      pointLastLenRef.current = ref.length;
+      // 1) 수식 편집 중 → 참조 삽입 모드
+      if (isFormulaInput()) {
+        e.preventDefault(); // 입력 포커스 유지 (blur 방지)
+        const inp = inputRef.current!;
+        draggingPointRef.current = true;
+        pointAnchorRef.current = { r, c };
+        const pos = inp.selectionStart ?? inp.value.length;
+        pointStartIdxRef.current = pos;
+        const ref = indexToLetters(c) + (r + 1);
+        inp.value = inp.value.slice(0, pos) + ref + inp.value.slice(pos);
+        const caret = pos + ref.length;
+        inp.setSelectionRange(caret, caret);
+        pointLastLenRef.current = ref.length;
+        return;
+      }
+      // 2) 일반 범위 선택 드래그
+      setEditing(false);
+      if (e.shiftKey && selRef.current) {
+        setAnchor((a) => a ?? selRef.current);
+        setSel({ r, c });
+      } else {
+        setAnchor({ r, c });
+        setSel({ r, c });
+        rangeDragRef.current = true;
+      }
     },
     [isFormulaInput],
   );
 
   const onCellMouseEnter = useCallback((r: number, c: number) => {
-    if (!draggingPointRef.current) return;
-    const a = pointAnchorRef.current;
-    const inp = inputRef.current;
-    if (!a || !inp) return;
-    const refStr =
-      a.r === r && a.c === c
-        ? indexToLetters(c) + (r + 1)
-        : `${indexToLetters(a.c)}${a.r + 1}:${indexToLetters(c)}${r + 1}`;
-    const start = pointStartIdxRef.current;
-    inp.value =
-      inp.value.slice(0, start) +
-      refStr +
-      inp.value.slice(start + pointLastLenRef.current);
-    const caret = start + refStr.length;
-    inp.setSelectionRange(caret, caret);
-    pointLastLenRef.current = refStr.length;
+    // 수식 참조 드래그
+    if (draggingPointRef.current) {
+      const a = pointAnchorRef.current;
+      const inp = inputRef.current;
+      if (!a || !inp) return;
+      const refStr =
+        a.r === r && a.c === c
+          ? indexToLetters(c) + (r + 1)
+          : `${indexToLetters(a.c)}${a.r + 1}:${indexToLetters(c)}${r + 1}`;
+      const start = pointStartIdxRef.current;
+      inp.value =
+        inp.value.slice(0, start) +
+        refStr +
+        inp.value.slice(start + pointLastLenRef.current);
+      const caret = start + refStr.length;
+      inp.setSelectionRange(caret, caret);
+      pointLastLenRef.current = refStr.length;
+      return;
+    }
+    // 일반 범위 선택 드래그
+    if (rangeDragRef.current) setSel({ r, c });
   }, []);
 
   useEffect(() => {
     const up = () => {
       draggingPointRef.current = false;
+      rangeDragRef.current = false;
     };
     document.addEventListener("mouseup", up);
     return () => document.removeEventListener("mouseup", up);
@@ -339,11 +449,13 @@ export function SpreadsheetTable(props: Props) {
               columns={columns}
               evaluator={evaluator}
               selCol={sel?.r === r ? sel.c : -1}
+              rangeMinC={r >= minR && r <= maxR ? minC : -1}
+              rangeMaxC={r >= minR && r <= maxR ? maxC : -1}
               editing={sel?.r === r && editing}
               editInit={sel?.r === r ? editInit : ""}
               editTyped={sel?.r === r ? editTyped : false}
               inputRef={inputRef}
-              onCellClick={onCellClick}
+              onCellDblClick={onCellDblClick}
               onCellMouseDown={onCellMouseDown}
               onCellMouseEnter={onCellMouseEnter}
               onInputKeyDown={onInputKeyDown}
@@ -380,11 +492,13 @@ interface RowProps {
   columns: Column[];
   evaluator: Evaluator;
   selCol: number;
+  rangeMinC: number;
+  rangeMaxC: number;
   editing: boolean;
   editInit: string;
   editTyped: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onCellClick: (r: number, c: number) => void;
+  onCellDblClick: (r: number, c: number) => void;
   onCellMouseDown: (r: number, c: number, e: React.MouseEvent) => void;
   onCellMouseEnter: (r: number, c: number) => void;
   onInputKeyDown: (e: React.KeyboardEvent) => void;
@@ -403,11 +517,13 @@ const RowView = React.memo(function RowView({
   columns,
   evaluator,
   selCol,
+  rangeMinC,
+  rangeMaxC,
   editing,
   editInit,
   editTyped,
   inputRef,
-  onCellClick,
+  onCellDblClick,
   onCellMouseDown,
   onCellMouseEnter,
   onInputKeyDown,
@@ -431,18 +547,25 @@ const RowView = React.memo(function RowView({
       {columns.map((col, c) => {
         const isSel = c === selCol;
         const isEditing = isSel && editing;
+        const inRange = c >= rangeMinC && c <= rangeMaxC;
         const value = row[col.key];
         const formula = !isEditing && isFormula(value);
         return (
           <td
             key={col.key}
-            onClick={() => onCellClick(rowIndex, c)}
+            onDoubleClick={() => onCellDblClick(rowIndex, c)}
             onMouseDown={(e) => onCellMouseDown(rowIndex, c, e)}
             onMouseEnter={() => onCellMouseEnter(rowIndex, c)}
             style={{ width: col.width, minWidth: col.width }}
-            className={`relative cursor-default border-b border-r border-gray-100 px-2 py-1.5 align-top ${
-              isEditing ? "bg-white ring-2 ring-inset ring-blue-500" : ""
-            } ${isSel && !isEditing ? "ring-2 ring-inset ring-blue-500" : ""}`}
+            className={`relative cursor-cell select-none border-b border-r border-gray-100 px-2 py-1.5 align-top ${
+              isEditing
+                ? "bg-white ring-2 ring-inset ring-blue-500"
+                : isSel
+                  ? "bg-white ring-2 ring-inset ring-blue-500"
+                  : inRange
+                    ? "bg-blue-100/70"
+                    : ""
+            }`}
           >
             {isEditing && col.type === "select" ? (
               <SelectDropdown
@@ -476,6 +599,7 @@ const RowView = React.memo(function RowView({
                 onKeyDown={onInputKeyDown}
                 onBlur={onInputBlur}
                 onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 className="w-full bg-transparent text-gray-900 caret-blue-600 outline-none"
               />
             ) : formula ? (
@@ -649,6 +773,7 @@ function SelectDropdown({
     <div
       ref={ref}
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       className="absolute left-0 top-full z-30 mt-1 w-40 rounded-md border border-gray-200 bg-white p-1 shadow-lg"
     >
       {column.options?.map((opt) => (
