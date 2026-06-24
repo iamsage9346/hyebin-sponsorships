@@ -6,13 +6,16 @@ import type {
 } from "./types";
 
 export function emptyFilter(): FilterState {
-  return { selected: {}, search: {} };
+  return { selected: {}, search: {}, range: {} };
 }
 
 export function hasActiveFilter(f: FilterState): boolean {
   const anySelected = Object.values(f.selected).some((v) => v && v.length > 0);
   const anySearch = Object.values(f.search).some((v) => v && v.trim() !== "");
-  return anySelected || anySearch;
+  const anyRange = Object.values(f.range).some(
+    (v) => v && (v.min !== null || v.max !== null),
+  );
+  return anySelected || anySearch || anyRange;
 }
 
 function cellText(v: Row[string]): string {
@@ -31,6 +34,15 @@ export function applyFilter(
         if (sel && sel.length > 0) {
           const v = cellText(row[col.key]);
           if (!sel.includes(v)) return false;
+        }
+      } else if (col.type === "number") {
+        const rng = filter.range[col.key];
+        if (rng && (rng.min !== null || rng.max !== null)) {
+          const raw = row[col.key];
+          const n = Number(cellText(raw).replace(/,/g, ""));
+          if (cellText(raw) === "" || Number.isNaN(n)) return false;
+          if (rng.min !== null && n < rng.min) return false;
+          if (rng.max !== null && n > rng.max) return false;
         }
       } else {
         const term = filter.search[col.key];

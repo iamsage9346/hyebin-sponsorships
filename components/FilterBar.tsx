@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Column, FilterState } from "@/lib/types";
+import type { Column, ColumnType, FilterState } from "@/lib/types";
+
+const TYPE_LABEL: Record<ColumnType, string> = {
+  text: "텍스트",
+  number: "숫자",
+  date: "날짜",
+  select: "선택",
+};
+
+function rangeSummary(rng?: { min: number | null; max: number | null }): string {
+  if (!rng || (rng.min === null && rng.max === null)) return "…";
+  if (rng.min !== null && rng.max !== null)
+    return `${rng.min.toLocaleString()}~${rng.max.toLocaleString()}`;
+  if (rng.min !== null) return `≥ ${rng.min.toLocaleString()}`;
+  return `≤ ${rng.max!.toLocaleString()}`;
+}
 
 interface Props {
   columns: Column[];
@@ -11,6 +26,10 @@ interface Props {
   onRemoveKey: (key: string) => void;
   onSelectChange: (key: string, values: string[]) => void;
   onSearchChange: (key: string, term: string) => void;
+  onRangeChange: (
+    key: string,
+    range: { min: number | null; max: number | null },
+  ) => void;
   onClearAll: () => void;
 }
 
@@ -22,6 +41,7 @@ export function FilterBar({
   onRemoveKey,
   onSelectChange,
   onSearchChange,
+  onRangeChange,
   onClearAll,
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
@@ -64,9 +84,12 @@ export function FilterBar({
                 setAddOpen(false);
                 setOpenChip(c.key);
               }}
-              className="w-full truncate rounded px-2 py-1 text-left text-sm hover:bg-gray-50"
+              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-sm hover:bg-gray-50"
             >
-              {c.label || "(이름 없음)"}
+              <span className="truncate">{c.label || "(이름 없음)"}</span>
+              <span className="shrink-0 rounded bg-gray-100 px-1.5 text-[10px] text-gray-500">
+                {TYPE_LABEL[c.type]}
+              </span>
             </button>
           ))}
         </div>
@@ -78,14 +101,17 @@ export function FilterBar({
         if (!col) return null;
         const selected = filter.selected[key] ?? [];
         const search = filter.search[key] ?? "";
+        const range = filter.range[key] ?? { min: null, max: null };
         const summary =
           col.type === "select"
             ? selected.length > 0
               ? selected.join(", ")
               : "전체"
-            : search.trim() !== ""
-              ? `"${search}"`
-              : "…";
+            : col.type === "number"
+              ? rangeSummary(range)
+              : search.trim() !== ""
+                ? `"${search}"`
+                : "…";
         return (
           <Popover
             key={key}
@@ -139,6 +165,35 @@ export function FilterBar({
                       </label>
                     );
                   })}
+                </div>
+              ) : col.type === "number" ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    type="number"
+                    value={range.min ?? ""}
+                    placeholder="최소"
+                    onChange={(e) =>
+                      onRangeChange(key, {
+                        ...range,
+                        min: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:border-blue-400"
+                  />
+                  <span className="text-gray-400">~</span>
+                  <input
+                    type="number"
+                    value={range.max ?? ""}
+                    placeholder="최대"
+                    onChange={(e) =>
+                      onRangeChange(key, {
+                        ...range,
+                        max: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:border-blue-400"
+                  />
                 </div>
               ) : (
                 <input

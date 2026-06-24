@@ -37,8 +37,10 @@ export interface SheetData {
 export interface FilterState {
   /** select 컬럼: 선택된 옵션 값들 (비어있으면 전체) */
   selected: Record<string, string[]>;
-  /** text/number/date 컬럼: 포함 검색어 */
+  /** text/date 컬럼: 포함 검색어 */
   search: Record<string, string>;
+  /** number 컬럼: 최소/최대 범위 */
+  range: Record<string, { min: number | null; max: number | null }>;
 }
 
 export interface SortState {

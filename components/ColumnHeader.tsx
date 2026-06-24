@@ -13,6 +13,7 @@ const EDITABLE_TYPES: ColumnType[] = ["text", "number", "date"];
 
 interface Props {
   column: Column;
+  letter: string;
   sort: SortState | null;
   onToggleSort: (key: string) => void;
   onRename: (key: string, label: string) => void;
@@ -23,6 +24,7 @@ interface Props {
 
 export function ColumnHeader({
   column,
+  letter,
   sort,
   onToggleSort,
   onRename,
@@ -56,11 +58,16 @@ export function ColumnHeader({
       <button
         type="button"
         onClick={() => onToggleSort(column.key)}
-        className="flex-1 truncate text-left hover:text-black"
+        className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-black"
         title="클릭하여 정렬"
       >
-        {column.label || " "}
-        <span className="text-gray-400">{sortArrow}</span>
+        {column.label !== letter && (
+          <span className="shrink-0 rounded bg-gray-200 px-1 text-[9px] font-normal text-gray-500">
+            {letter}
+          </span>
+        )}
+        <span className="truncate">{column.label || letter}</span>
+        <span className="shrink-0 text-gray-400">{sortArrow}</span>
       </button>
       <button
         type="button"

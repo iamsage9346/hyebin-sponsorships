@@ -160,9 +160,11 @@ export default function Page() {
     setFilter((f) => {
       const selected = { ...f.selected };
       const search = { ...f.search };
+      const range = { ...f.range };
       delete selected[key];
       delete search[key];
-      return { selected, search };
+      delete range[key];
+      return { selected, search, range };
     });
   }, []);
 
@@ -185,9 +187,11 @@ export default function Page() {
     setFilter((f) => {
       const selected = { ...f.selected };
       const search = { ...f.search };
+      const range = { ...f.range };
       delete selected[key];
       delete search[key];
-      return { selected, search };
+      delete range[key];
+      return { selected, search, range };
     });
   }, []);
 
@@ -198,6 +202,13 @@ export default function Page() {
   const onSearchFilter = useCallback((key: string, term: string) => {
     setFilter((f) => ({ ...f, search: { ...f.search, [key]: term } }));
   }, []);
+
+  const onRangeFilter = useCallback(
+    (key: string, range: { min: number | null; max: number | null }) => {
+      setFilter((f) => ({ ...f, range: { ...f.range, [key]: range } }));
+    },
+    [],
+  );
 
   const onClearFilters = useCallback(() => {
     setFilter(emptyFilter());
@@ -221,6 +232,12 @@ export default function Page() {
         <p className="mt-1 text-sm text-gray-500">
           셀을 클릭해 수정하고 Enter·Tab·방향키로 이동하세요. 변경 사항은 자동
           저장됩니다.
+        </p>
+        <p className="mt-1 text-xs text-gray-400">
+          수식: 셀에 <code className="rounded bg-gray-100 px-1">=D*0.033</code>{" "}
+          (같은 행 D열) · <code className="rounded bg-gray-100 px-1">=D2*0.033</code>{" "}
+          (특정 셀) · <code className="rounded bg-gray-100 px-1">=SUM(D1:D100)</code>{" "}
+          처럼 입력하면 계산됩니다. (열 문자는 헤더의 회색 배지 참고)
         </p>
       </header>
 
@@ -255,6 +272,7 @@ export default function Page() {
           onRemoveKey={onRemoveFilterKey}
           onSelectChange={onSelectFilter}
           onSearchChange={onSearchFilter}
+          onRangeChange={onRangeFilter}
           onClearAll={onClearFilters}
         />
         <div className="ml-auto flex items-center gap-2">

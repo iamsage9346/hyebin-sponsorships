@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CellValue,
   Column,
@@ -9,6 +9,7 @@ import type {
   SortState,
 } from "@/lib/types";
 import { ROW_HIGHLIGHT } from "@/lib/colors";
+import { makeEvaluator, indexToLetters, isFormula } from "@/lib/formula";
 import { Tag } from "./Tag";
 import { Calendar } from "./Calendar";
 import { ColumnHeader } from "./ColumnHeader";
@@ -37,6 +38,7 @@ interface Sel {
 function parseValue(col: Column, raw: string): CellValue {
   const trimmed = raw.trim();
   if (trimmed === "") return null;
+  if (trimmed.startsWith("=")) return raw; // 수식은 원문 그대로 저장
   if (col.type === "number") {
     const n = Number(trimmed.replace(/,/g, ""));
     return Number.isNaN(n) ? null : n;
@@ -213,6 +215,8 @@ export function SpreadsheetTable(props: Props) {
     [editing, sel, clamp, startEdit, columns, rows, onCellChange],
   );
 
+  const evaluator = useMemo(() => makeEvaluator(columns, rows), [columns, rows]);
+
   return (
     <div
       ref={containerRef}
@@ -223,7 +227,11 @@ export function SpreadsheetTable(props: Props) {
       <table className="border-collapse text-sm">
         <thead>
           <tr className="sticky top-0 z-20 bg-gray-50">
-            {columns.map((col) => (
+            <th
+              className="sticky left-0 z-30 border-b border-r border-gray-200 bg-gray-100 px-1 py-2 text-center text-[10px] font-semibold text-gray-400"
+              style={{ width: 36, minWidth: 36 }}
+            />
+            {columns.map((col, c) => (
               <th
                 key={col.key}
                 style={{ width: col.width, minWidth: col.width }}
@@ -231,6 +239,7 @@ export function SpreadsheetTable(props: Props) {
               >
                 <ColumnHeader
                   column={col}
+                  letter={indexToLetters(c)}
                   sort={sort}
                   onToggleSort={onToggleSort}
                   onRename={onRenameColumn}
@@ -253,6 +262,7 @@ export function SpreadsheetTable(props: Props) {
               row={row}
               rowIndex={r}
               columns={columns}
+              evaluator={evaluator}
               selCol={sel?.r === r ? sel.c : -1}
               editing={sel?.r === r && editing}
               editInit={sel?.r === r ? editInit : ""}
@@ -272,7 +282,7 @@ export function SpreadsheetTable(props: Props) {
           {rows.length === 0 && (
             <tr>
               <td
-                colSpan={columns.length + 1}
+                colSpan={columns.length + 2}
                 className="px-4 py-8 text-center text-sm text-gray-400"
               >
                 표시할 데이터가 없습니다.
@@ -285,10 +295,13 @@ export function SpreadsheetTable(props: Props) {
   );
 }
 
+type Evaluator = ReturnType<typeof makeEvaluator>;
+
 interface RowProps {
   row: Row;
   rowIndex: number;
   columns: Column[];
+  evaluator: Evaluator;
   selCol: number;
   editing: boolean;
   editInit: string;
@@ -309,6 +322,7 @@ const RowView = React.memo(function RowView({
   row,
   rowIndex,
   columns,
+  evaluator,
   selCol,
   editing,
   editInit,
@@ -327,10 +341,17 @@ const RowView = React.memo(function RowView({
   const highlight = row.status === "미촬영" ? ROW_HIGHLIGHT : "";
   return (
     <tr className={`group ${highlight} hover:bg-blue-50/40`}>
+      <td
+        className="sticky left-0 z-10 border-b border-r border-gray-200 bg-gray-50 px-1 text-center text-[10px] text-gray-400 group-hover:bg-blue-50/40"
+        style={{ width: 36, minWidth: 36 }}
+      >
+        {rowIndex + 1}
+      </td>
       {columns.map((col, c) => {
         const isSel = c === selCol;
         const isEditing = isSel && editing;
         const value = row[col.key];
+        const formula = !isEditing && isFormula(value);
         return (
           <td
             key={col.key}
@@ -374,6 +395,18 @@ const RowView = React.memo(function RowView({
                 onClick={(e) => e.stopPropagation()}
                 className="w-full bg-transparent text-gray-900 caret-blue-600 outline-none"
               />
+            ) : formula ? (
+              (() => {
+                const d = evaluator.display(rowIndex, c);
+                return (
+                  <span
+                    className={`tabular-nums ${d.error ? "text-red-500" : "text-gray-900"}`}
+                    title={displayText(value)}
+                  >
+                    {d.text}
+                  </span>
+                );
+              })()
             ) : col.type === "select" && value ? (
               (() => {
                 const opt = col.options?.find((o) => o.value === value);
