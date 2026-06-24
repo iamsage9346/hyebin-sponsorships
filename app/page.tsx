@@ -32,6 +32,7 @@ import {
 import { SpreadsheetTable } from "@/components/SpreadsheetTable";
 import { FilterBar } from "@/components/FilterBar";
 import { CalendarView } from "@/components/CalendarView";
+import { MonthlySummary } from "@/components/MonthlySummary";
 import { SheetTabs } from "@/components/SheetTabs";
 
 export default function Page() {
@@ -63,6 +64,14 @@ export default function Page() {
   );
   const columns = useMemo(() => activeSheet?.columns ?? [], [activeSheet]);
   const rows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
+
+  // 월별 정산 기준 날짜 컬럼 (입금일 우선)
+  const monthDateKey = useMemo(() => {
+    const pay = columns.find((c) => c.key === "paymentDate");
+    if (pay) return pay.key;
+    return columns.find((c) => c.type === "date")?.key ?? null;
+  }, [columns]);
+  const activeMonth = monthDateKey ? filter.search[monthDateKey] ?? null : null;
 
   const displayRows = useMemo(() => {
     const filtered = applyFilter(rows, columns, filter);
@@ -351,6 +360,24 @@ export default function Page() {
     setFilterKeys([]);
   }, []);
 
+  const onPickMonth = useCallback(
+    (month: string) => {
+      if (!monthDateKey) return;
+      if (filter.search[monthDateKey] === month) {
+        removeFilterFor(monthDateKey);
+      } else {
+        setFilterKeys((keys) =>
+          keys.includes(monthDateKey) ? keys : [...keys, monthDateKey],
+        );
+        setFilter((f) => ({
+          ...f,
+          search: { ...f.search, [monthDateKey]: month },
+        }));
+      }
+    },
+    [monthDateKey, filter],
+  );
+
   if (!ws || !activeSheet) {
     return (
       <main className="flex min-h-screen items-center justify-center text-gray-400">
@@ -406,6 +433,14 @@ export default function Page() {
           }
         />
       </section>
+
+      <MonthlySummary
+        columns={columns}
+        rows={rows}
+        dateKey={monthDateKey}
+        activeMonth={activeMonth}
+        onPickMonth={onPickMonth}
+      />
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <FilterBar
