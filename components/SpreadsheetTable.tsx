@@ -421,14 +421,58 @@ export function SpreadsheetTable(props: Props) {
     return () => document.removeEventListener("mouseup", up);
   }, []);
 
+  // ----- 확대/축소 -----
+  const [zoom, setZoom] = useState(1);
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.5, +z.toFixed(2)));
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // Ctrl/⌘ + 스크롤일 때만 줌
+      e.preventDefault();
+      setZoom((z) => clampZoom(z - e.deltaY * 0.0015));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   return (
-    <div
-      ref={containerRef}
-      tabIndex={0}
-      onKeyDown={onGridKeyDown}
-      className="max-h-[72vh] overflow-auto rounded-lg border border-gray-200 bg-white outline-none"
-    >
-      <table className="border-collapse text-sm">
+    <div>
+      <div className="mb-1 flex items-center justify-end gap-1 text-xs text-gray-500">
+        <span className="mr-1">확대</span>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => clampZoom(z - 0.1))}
+          className="h-6 w-6 rounded border border-gray-300 hover:bg-gray-50"
+          title="축소"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom(1)}
+          className="w-12 rounded border border-gray-300 py-0.5 tabular-nums hover:bg-gray-50"
+          title="100%로"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => clampZoom(z + 0.1))}
+          className="h-6 w-6 rounded border border-gray-300 hover:bg-gray-50"
+          title="확대"
+        >
+          +
+        </button>
+      </div>
+      <div
+        ref={containerRef}
+        tabIndex={0}
+        onKeyDown={onGridKeyDown}
+        className="max-h-[72vh] overflow-auto rounded-lg border border-gray-200 bg-white outline-none"
+      >
+        <table className="border-collapse text-sm" style={{ zoom }}>
         <thead>
           <tr className="sticky top-0 z-20 bg-gray-50">
             <th
@@ -508,6 +552,7 @@ export function SpreadsheetTable(props: Props) {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
