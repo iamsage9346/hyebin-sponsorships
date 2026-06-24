@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Column, Row } from "@/lib/types";
+import type { Column, Row, SelectOption } from "@/lib/types";
 import { EVENT_COLORS } from "@/lib/colors";
 import { parseDate } from "@/lib/date";
+import { Tag } from "./Tag";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -17,6 +18,7 @@ interface Ev {
   colLabel: string;
   colorIdx: number;
   title: string;
+  row: Row;
 }
 
 /** 상단의 큰 월 캘린더 — 날짜 컬럼(입금일·업로드 등)을 색상별 이벤트로 표시 */
@@ -25,6 +27,7 @@ export function CalendarView({ columns, rows }: Props) {
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
 
   const dateCols = useMemo(
     () => columns.filter((c) => c.type === "date"),
@@ -55,6 +58,7 @@ export function CalendarView({ columns, rows }: Props) {
           colLabel: col.label,
           colorIdx: idx % EVENT_COLORS.length,
           title: title || "(제목 없음)",
+          row,
         });
         map.set(parsed.d, list);
       }
@@ -74,14 +78,27 @@ export function CalendarView({ columns, rows }: Props) {
       ? now.getDate()
       : null;
 
-  const prev = () =>
+  const prev = () => {
+    setSelectedDay(null);
     setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }));
-  const next = () =>
+  };
+  const next = () => {
+    setSelectedDay(null);
     setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }));
-  const goToday = () => setView({ y: now.getFullYear(), m: now.getMonth() });
+  };
+  const goToday = () => {
+    setView({ y: now.getFullYear(), m: now.getMonth() });
+    setSelectedDay(now.getDate());
+  };
+
+  const dayEvents = selectedDay !== null ? eventsByDay.get(selectedDay) ?? [] : [];
+  const selWeekday =
+    selectedDay !== null
+      ? WEEKDAYS[new Date(view.y, view.m, selectedDay).getDay()]
+      : "";
 
   return (
-    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-3 sm:p-4">
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white px-1.5 py-3 sm:px-4 sm:py-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-1 sm:gap-2">
           <button
@@ -172,34 +189,47 @@ export function CalendarView({ columns, rows }: Props) {
             ))}
           </div>
 
-          {/* 날짜 격자 */}
-          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md bg-gray-100">
+          {/* 날짜 격자 (가로 구분선만, 세로선 없음) */}
+          <div className="grid grid-cols-7">
             {cells.map((d, i) => {
               const evs = d ? eventsByDay.get(d) ?? [] : [];
               const isToday = d === today;
+              const isSelected = d !== null && d === selectedDay;
               return (
-                <div
+                <button
                   key={i}
-                  className={`min-h-[64px] bg-white p-1 sm:min-h-[96px] ${
-                    d === null ? "bg-gray-50" : ""
+                  type="button"
+                  disabled={d === null}
+                  onClick={() => d !== null && setSelectedDay(d)}
+                  className={`min-h-[58px] border-t border-gray-100 px-0.5 pt-1 pb-0.5 text-left align-top sm:min-h-[92px] ${
+                    isSelected ? "rounded-md ring-1 ring-inset ring-gray-300" : ""
                   }`}
                 >
                   {d !== null && (
                     <>
                       <div
-                        className={`mb-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs ${
+                        className={`mb-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full text-xs ${
                           isToday
-                            ? "bg-blue-600 font-bold text-white"
+                            ? "bg-blue-600 px-1 font-bold text-white"
                             : "text-gray-500"
                         }`}
                       >
                         {d}
                       </div>
-                      <div className="flex flex-col gap-0.5">
+                      {/* 모바일: 색 점 / 데스크탑: 칩 */}
+                      <div className="flex flex-wrap gap-0.5 sm:hidden">
+                        {evs.slice(0, 4).map((ev, j) => (
+                          <span
+                            key={j}
+                            className={`h-1.5 w-1.5 rounded-full ${EVENT_COLORS[ev.colorIdx].dot}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="hidden flex-col gap-0.5 sm:flex">
                         {evs.slice(0, 4).map((ev, j) => (
                           <div
                             key={j}
-                            className={`truncate rounded px-1 py-0.5 text-[10px] leading-tight sm:text-[11px] ${
+                            className={`truncate rounded px-1 py-0.5 text-[11px] leading-tight ${
                               EVENT_COLORS[ev.colorIdx].chip
                             }`}
                             title={`${ev.colLabel}: ${ev.title}`}
@@ -215,12 +245,76 @@ export function CalendarView({ columns, rows }: Props) {
                       </div>
                     </>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
+
+          {/* 선택한 날짜의 협찬 상세 */}
+          {selectedDay !== null && (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <div className="mb-2 text-sm font-semibold text-gray-800">
+                {view.y}.{String(view.m + 1).padStart(2, "0")}.
+                {String(selectedDay).padStart(2, "0")}{" "}
+                <span className="text-gray-400">({selWeekday})</span>
+              </div>
+              {dayEvents.length === 0 ? (
+                <div className="py-6 text-center text-sm text-gray-400">
+                  이 날짜의 협찬 일정이 없습니다.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {dayEvents.map((ev, i) => (
+                    <DayEventCard key={i} ev={ev} columns={columns} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>
+  );
+}
+
+function DayEventCard({ ev, columns }: { ev: Ev; columns: Column[] }) {
+  const tags = columns
+    .filter((c) => c.type === "select")
+    .map((c) => {
+      const v = ev.row[c.key];
+      const opt = c.options?.find((o) => o.value === v);
+      return opt ? { key: c.key, opt } : null;
+    })
+    .filter(Boolean) as { key: string; opt: SelectOption }[];
+
+  const product = columns.find((c) => c.key === "product");
+  const productVal = product ? ev.row[product.key] : null;
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-gray-200 p-2.5">
+      <span
+        className={`mt-1 h-3 w-3 shrink-0 rounded-full ${EVENT_COLORS[ev.colorIdx].dot}`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-medium text-gray-900">{ev.title}</span>
+          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">
+            {ev.colLabel}
+          </span>
+        </div>
+        {productVal ? (
+          <div className="mt-0.5 truncate text-sm text-gray-500">
+            {String(productVal)}
+          </div>
+        ) : null}
+        {tags.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {tags.map((t) => (
+              <Tag key={t.key} option={t.opt} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
