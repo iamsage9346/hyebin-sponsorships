@@ -7,9 +7,11 @@ import type {
   ColumnType,
   FilterState,
   Row,
+  SelectOption,
   SheetData,
   SortState,
 } from "@/lib/types";
+import { TAG_COLORS } from "@/lib/colors";
 import { loadData, saveData, emptyRow, newColumnKey, newRowId } from "@/lib/storage";
 import {
   applyFilter,
@@ -123,15 +125,46 @@ export default function Page() {
   }, []);
 
   const onChangeColumnType = useCallback((key: string, type: ColumnType) => {
-    setData((d) =>
-      d
-        ? {
-            ...d,
-            columns: d.columns.map((c) => (c.key === key ? { ...c, type } : c)),
+    setData((d) => {
+      if (!d) return d;
+      const columns = d.columns.map((c) => {
+        if (c.key !== key) return c;
+        if (type === "select" && (!c.options || c.options.length === 0)) {
+          // 기존 셀 값을 모아 자동으로 옵션(태그) 생성
+          const seen: string[] = [];
+          for (const row of d.rows) {
+            const v = row[key];
+            if (typeof v === "string" && v.trim() !== "" && !seen.includes(v)) {
+              seen.push(v);
+            }
           }
-        : d,
-    );
+          const options: SelectOption[] = seen.map((value, i) => ({
+            value,
+            color: TAG_COLORS[i % TAG_COLORS.length],
+          }));
+          return { ...c, type, options };
+        }
+        return { ...c, type };
+      });
+      return { ...d, columns };
+    });
   }, []);
+
+  const onSetColumnOptions = useCallback(
+    (key: string, options: SelectOption[]) => {
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              columns: d.columns.map((c) =>
+                c.key === key ? { ...c, options } : c,
+              ),
+            }
+          : d,
+      );
+    },
+    [],
+  );
 
   const onInsertColumn = useCallback((key: string, side: "left" | "right") => {
     setData((d) => {
@@ -303,6 +336,7 @@ export default function Page() {
         onToggleSort={onToggleSort}
         onRenameColumn={onRenameColumn}
         onChangeColumnType={onChangeColumnType}
+        onSetColumnOptions={onSetColumnOptions}
         onInsertColumn={onInsertColumn}
         onDeleteColumn={onDeleteColumn}
         onInsertRow={onInsertRow}

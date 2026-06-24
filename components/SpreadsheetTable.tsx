@@ -6,6 +6,7 @@ import type {
   Column,
   ColumnType,
   Row,
+  SelectOption,
   SortState,
 } from "@/lib/types";
 import { ROW_HIGHLIGHT } from "@/lib/colors";
@@ -22,6 +23,7 @@ interface Props {
   onToggleSort: (key: string) => void;
   onRenameColumn: (key: string, label: string) => void;
   onChangeColumnType: (key: string, type: ColumnType) => void;
+  onSetColumnOptions: (key: string, options: SelectOption[]) => void;
   onInsertColumn: (key: string, side: "left" | "right") => void;
   onDeleteColumn: (key: string) => void;
   onInsertRow: (id: string, where: "above" | "below") => void;
@@ -59,6 +61,7 @@ export function SpreadsheetTable(props: Props) {
     onToggleSort,
     onRenameColumn,
     onChangeColumnType,
+    onSetColumnOptions,
     onInsertColumn,
     onDeleteColumn,
     onInsertRow,
@@ -244,6 +247,7 @@ export function SpreadsheetTable(props: Props) {
                   onToggleSort={onToggleSort}
                   onRename={onRenameColumn}
                   onChangeType={onChangeColumnType}
+                  onSetOptions={onSetColumnOptions}
                   onInsert={onInsertColumn}
                   onDelete={onDeleteColumn}
                 />

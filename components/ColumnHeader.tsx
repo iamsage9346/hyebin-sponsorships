@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Column, ColumnType, SortState } from "@/lib/types";
+import type { Column, ColumnType, SelectOption, SortState } from "@/lib/types";
+import { DOT_STYLES, TAG_COLORS } from "@/lib/colors";
 
 const TYPE_LABELS: Record<ColumnType, string> = {
   text: "텍스트",
@@ -9,7 +10,7 @@ const TYPE_LABELS: Record<ColumnType, string> = {
   date: "날짜",
   select: "선택",
 };
-const EDITABLE_TYPES: ColumnType[] = ["text", "number", "date"];
+const EDITABLE_TYPES: ColumnType[] = ["text", "number", "date", "select"];
 
 interface Props {
   column: Column;
@@ -18,6 +19,7 @@ interface Props {
   onToggleSort: (key: string) => void;
   onRename: (key: string, label: string) => void;
   onChangeType: (key: string, type: ColumnType) => void;
+  onSetOptions: (key: string, options: SelectOption[]) => void;
   onInsert: (key: string, side: "left" | "right") => void;
   onDelete: (key: string) => void;
 }
@@ -29,6 +31,7 @@ export function ColumnHeader({
   onToggleSort,
   onRename,
   onChangeType,
+  onSetOptions,
   onInsert,
   onDelete,
 }: Props) {
@@ -79,7 +82,7 @@ export function ColumnHeader({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-7 z-30 w-52 rounded-md border border-gray-200 bg-white p-2 text-gray-700 shadow-lg">
+        <div className="absolute left-0 top-7 z-30 w-64 rounded-md border border-gray-200 bg-white p-2 text-gray-700 shadow-lg">
           <input
             autoFocus
             value={name}
@@ -111,9 +114,10 @@ export function ColumnHeader({
             ))}
           </div>
           {column.type === "select" && (
-            <div className="mb-2 px-1 text-xs text-gray-400">
-              선택형 컬럼 (타입 고정)
-            </div>
+            <OptionsEditor
+              options={column.options ?? []}
+              onChange={(opts) => onSetOptions(column.key, opts)}
+            />
           )}
           <div className="border-t border-gray-100 pt-1">
             <MenuItem
@@ -144,6 +148,71 @@ export function ColumnHeader({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OptionsEditor({
+  options,
+  onChange,
+}: {
+  options: SelectOption[];
+  onChange: (opts: SelectOption[]) => void;
+}) {
+  const cycleColor = (i: number) => {
+    const cur = TAG_COLORS.indexOf(options[i].color);
+    const next = TAG_COLORS[(cur + 1) % TAG_COLORS.length];
+    onChange(options.map((o, j) => (j === i ? { ...o, color: next } : o)));
+  };
+  const setValue = (i: number, value: string) =>
+    onChange(options.map((o, j) => (j === i ? { ...o, value } : o)));
+  const remove = (i: number) => onChange(options.filter((_, j) => j !== i));
+  const add = () =>
+    onChange([
+      ...options,
+      { value: "새 옵션", color: TAG_COLORS[options.length % TAG_COLORS.length] },
+    ]);
+
+  return (
+    <div className="mb-2">
+      <div className="mb-1 px-1 text-xs font-semibold text-gray-400">
+        옵션 (태그)
+      </div>
+      <div className="flex flex-col gap-1">
+        {options.map((opt, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => cycleColor(i)}
+              className={`h-4 w-4 shrink-0 rounded-full ${DOT_STYLES[opt.color]}`}
+              title="색상 변경 (클릭)"
+            />
+            <input
+              value={opt.value}
+              onChange={(e) => setValue(i, e.target.value)}
+              className="min-w-0 flex-1 rounded border border-gray-300 px-1.5 py-0.5 text-sm outline-none focus:border-blue-400"
+            />
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="shrink-0 px-1 text-gray-300 hover:text-red-500"
+              title="옵션 삭제"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {options.length === 0 && (
+          <div className="px-1 text-xs text-gray-400">옵션이 없습니다.</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={add}
+        className="mt-1 w-full rounded px-2 py-1 text-left text-sm text-blue-600 hover:bg-blue-50"
+      >
+        + 옵션 추가
+      </button>
     </div>
   );
 }
