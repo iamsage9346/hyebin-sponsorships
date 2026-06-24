@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CellValue,
   Column,
@@ -21,6 +21,7 @@ import {
   newColumnKey,
   newRowId,
 } from "@/lib/storage";
+import { fetchRemote, saveRemote } from "@/lib/remote";
 import {
   applyFilter,
   applySort,
@@ -41,13 +42,69 @@ export default function Page() {
   const [filterKeys, setFilterKeys] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);
 
+  const skipSaveRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 최초 로드: 서버(Supabase) 우선, 없으면 localStorage
   useEffect(() => {
-    setWs(loadWorkspace());
+    let cancelled = false;
+    (async () => {
+      const remote = await fetchRemote();
+      if (cancelled) return;
+      if (remote) {
+        const activeId = remote.sheets.some((s) => s.id === remote.activeId)
+          ? remote.activeId
+          : remote.sheets[0].id;
+        skipSaveRef.current = true; // 방금 받아온 것을 다시 저장하지 않음
+        setWs({ sheets: remote.sheets, activeId });
+        saveWorkspace({ sheets: remote.sheets, activeId });
+      } else {
+        setWs(loadWorkspace()); // 서버 미설정/비어있음 → 로컬에서 시작(이후 서버로 업로드됨)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // 변경 시: 로컬 즉시 저장 + 서버 디바운스 저장
   useEffect(() => {
-    if (ws) saveWorkspace(ws);
+    if (!ws) return;
+    saveWorkspace(ws);
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false;
+      return;
+    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const snapshot = ws;
+    saveTimerRef.current = setTimeout(() => {
+      saveRemote(snapshot);
+      saveTimerRef.current = null;
+    }, 700);
   }, [ws]);
+
+  // 다른 기기에서 바뀐 내용 반영: 탭이 다시 보일 때 서버에서 최신본 가져오기
+  useEffect(() => {
+    const refetch = async () => {
+      if (saveTimerRef.current) return; // 내가 방금 수정 중이면 건너뜀
+      const remote = await fetchRemote();
+      if (!remote) return;
+      const activeId = remote.sheets.some((s) => s.id === remote.activeId)
+        ? remote.activeId
+        : remote.sheets[0].id;
+      skipSaveRef.current = true;
+      setWs({ sheets: remote.sheets, activeId });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   const activeId = ws?.activeId ?? "";
 

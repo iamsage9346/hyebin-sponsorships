@@ -41,9 +41,19 @@ npm run build    # 프로덕션 빌드 + 타입체크
 
 ## 데이터 구조 / 영속성
 
-- 컬럼 스키마는 코드(`lib/seed.ts`)에서 정의됩니다.
-- 사용자가 편집하는 **행 데이터만** `localStorage` 키 `hyebin-sponsorships:rows:v1`에 저장됩니다.
+- 데이터(워크스페이스 = 시트 배열)는 **localStorage**에 저장되고, Supabase가 설정돼 있으면 **서버에도 저장**되어 기기 간 동기화됩니다.
 - 저장된 데이터가 없으면 시드 데이터(`lib/seed.ts`)로 시작합니다.
+
+### 기기 간 동기화 (Supabase)
+
+서버 동기화는 `POSTGRES_URL` 환경변수가 있을 때만 켜집니다. 없으면 자동으로 localStorage만 사용합니다.
+
+1. Vercel 프로젝트에 **Supabase 통합(Storage)** 을 추가하고, 통합 화면에서 **Connect to Project** 로 이 프로젝트(`hyebin-sponsorships`)에 연결합니다. → `POSTGRES_URL` 등이 프로젝트 환경변수로 자동 주입됩니다.
+2. 재배포(redeploy)합니다.
+3. 테이블(`workspace`)은 `/api/workspace` 가 첫 호출 시 **자동 생성**합니다(별도 SQL 불필요).
+
+- 동기화 동작: 앱 시작 시 서버에서 불러오고, 변경 시 0.7초 디바운스로 서버에 저장하며, 다른 탭/기기에서 돌아오면(focus) 최신본을 다시 불러옵니다(마지막 저장 우선).
+- 인증이 없으므로 URL을 아는 사람은 접근할 수 있습니다(1인 개인용 전제). 비공개가 필요하면 간단한 비밀번호 게이트를 추가할 수 있습니다.
 
 ## 향후 확장 (코드 구조상 용이)
 
