@@ -16,11 +16,11 @@ import { TAG_COLORS } from "@/lib/colors";
 import {
   loadWorkspace,
   saveWorkspace,
-  createBlankSheet,
   emptyRow,
   newColumnKey,
   newRowId,
 } from "@/lib/storage";
+import { parseDate } from "@/lib/date";
 import { buildSeedData } from "@/lib/seed";
 import { fetchRemote, saveRemote } from "@/lib/remote";
 import {
@@ -35,13 +35,18 @@ import { SpreadsheetTable } from "@/components/SpreadsheetTable";
 import { FilterBar } from "@/components/FilterBar";
 import { CalendarView } from "@/components/CalendarView";
 import { MonthlySummary } from "@/components/MonthlySummary";
-import { SheetTabs } from "@/components/SheetTabs";
+import { MonthTabs } from "@/components/MonthTabs";
 
 export default function Page() {
   const [ws, setWs] = useState<Workspace | null>(null);
   const [filter, setFilter] = useState<FilterState>(emptyFilter());
   const [filterKeys, setFilterKeys] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);
+  // 업로드일 기준 선택 월 "2026.06" · null이면 전체. 기본은 이번 달.
+  const [monthTab, setMonthTab] = useState<string | null>(() => {
+    const n = new Date();
+    return `${n.getFullYear()}.${String(n.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   const skipSaveRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,9 +58,7 @@ export default function Page() {
       const remote = await fetchRemote();
       if (cancelled) return;
       if (remote) {
-        const activeId = remote.sheets.some((s) => s.id === remote.activeId)
-          ? remote.activeId
-          : remote.sheets[0].id;
+        const activeId = remote.sheets[0].id; // 표는 항상 메인(첫) 시트 기준
         skipSaveRef.current = true; // 방금 받아온 것을 다시 저장하지 않음
         setWs({ sheets: remote.sheets, activeId });
         saveWorkspace({ sheets: remote.sheets, activeId });
@@ -90,9 +93,7 @@ export default function Page() {
       if (saveTimerRef.current) return; // 내가 방금 수정 중이면 건너뜀
       const remote = await fetchRemote();
       if (!remote) return;
-      const activeId = remote.sheets.some((s) => s.id === remote.activeId)
-        ? remote.activeId
-        : remote.sheets[0].id;
+      const activeId = remote.sheets[0].id;
       skipSaveRef.current = true;
       setWs({ sheets: remote.sheets, activeId });
     };
@@ -145,15 +146,25 @@ export default function Page() {
     if (up) return up.key;
     return overviewColumns.find((c) => c.type === "date")?.key ?? null;
   }, [overviewColumns]);
-  const monthStr = `${viewMonth.y}.${String(viewMonth.m + 1).padStart(2, "0")}`;
-  const monthFiltered = monthDateKey
-    ? filter.search[monthDateKey] === monthStr
-    : false;
+  const viewMonthStr = `${viewMonth.y}.${String(viewMonth.m + 1).padStart(2, "0")}`;
+  // 월별 정산의 '이 달만 보기'는 월별 탭과 연동
+  const monthFiltered = monthTab === viewMonthStr;
+
+  // 선택한 월(업로드일 기준)으로 먼저 추린 뒤 필터/정렬 적용
+  const monthRows = useMemo(() => {
+    if (!monthTab || !monthDateKey) return rows;
+    return rows.filter((r) => {
+      const v = r[monthDateKey];
+      if (typeof v !== "string") return false;
+      const d = parseDate(v);
+      return d ? `${d.y}.${String(d.m + 1).padStart(2, "0")}` === monthTab : false;
+    });
+  }, [rows, monthTab, monthDateKey]);
 
   const displayRows = useMemo(() => {
-    const filtered = applyFilter(rows, columns, filter);
+    const filtered = applyFilter(monthRows, columns, filter);
     return applySort(filtered, columns, sort);
-  }, [rows, columns, filter, sort]);
+  }, [monthRows, columns, filter, sort]);
 
   const summary = useMemo(
     () => computeSummary(rows, displayRows),
@@ -203,8 +214,13 @@ export default function Page() {
 
   // ----- 행 -----
   const onAddRow = useCallback(() => {
-    updateSheet((s) => ({ ...s, rows: [...s.rows, emptyRow(s.columns)] }));
-  }, [updateSheet]);
+    updateSheet((s) => {
+      const row = emptyRow(s.columns);
+      // 특정 월 탭을 보고 있으면 그 달 1일을 업로드일로 채워 탭에 남게 한다
+      if (monthTab && monthDateKey) row[monthDateKey] = `${monthTab}.01`;
+      return { ...s, rows: [...s.rows, row] };
+    });
+  }, [updateSheet, monthTab, monthDateKey]);
 
   const onDeleteRow = useCallback(
     (id: string) => {
@@ -366,48 +382,6 @@ export default function Page() {
     [updateSheet],
   );
 
-  // ----- 시트 -----
-  const onSelectSheet = useCallback((id: string) => {
-    setWs((w) => (w ? { ...w, activeId: id } : w));
-  }, []);
-
-  const onAddSheet = useCallback((name?: string) => {
-    setWs((w) => {
-      if (!w) return w;
-      const sheet = createBlankSheet(name ?? `시트 ${w.sheets.length + 1}`);
-      return { sheets: [...w.sheets, sheet], activeId: sheet.id };
-    });
-  }, []);
-
-  // 현재 캘린더가 보고 있는 달로 새 시트 생성 (이미 있으면 그 시트로 이동)
-  const onAddMonthSheet = useCallback(() => {
-    const name = `${viewMonth.y}년 ${viewMonth.m + 1}월`;
-    setWs((w) => {
-      if (!w) return w;
-      const existing = w.sheets.find((s) => s.name === name);
-      if (existing) return { ...w, activeId: existing.id };
-      const sheet = createBlankSheet(name);
-      return { sheets: [...w.sheets, sheet], activeId: sheet.id };
-    });
-  }, [viewMonth]);
-
-  const onRenameSheet = useCallback((id: string, name: string) => {
-    setWs((w) =>
-      w
-        ? { ...w, sheets: w.sheets.map((s) => (s.id === id ? { ...s, name } : s)) }
-        : w,
-    );
-  }, []);
-
-  const onDeleteSheet = useCallback((id: string) => {
-    setWs((w) => {
-      if (!w || w.sheets.length <= 1) return w;
-      const sheets = w.sheets.filter((s) => s.id !== id);
-      const activeId = w.activeId === id ? sheets[0].id : w.activeId;
-      return { sheets, activeId };
-    });
-  }, []);
-
   // ----- 정렬 -----
   const onToggleSort = useCallback((key: string) => {
     setSort((s) => {
@@ -458,24 +432,6 @@ export default function Page() {
     setFilter(emptyFilter());
     setFilterKeys([]);
   }, []);
-
-  const onPickMonth = useCallback(
-    (month: string) => {
-      if (!monthDateKey) return;
-      if (filter.search[monthDateKey] === month) {
-        removeFilterFor(monthDateKey);
-      } else {
-        setFilterKeys((keys) =>
-          keys.includes(monthDateKey) ? keys : [...keys, monthDateKey],
-        );
-        setFilter((f) => ({
-          ...f,
-          search: { ...f.search, [monthDateKey]: month },
-        }));
-      }
-    },
-    [monthDateKey, filter],
-  );
 
   if (!ws || !activeSheet) {
     return (
@@ -548,7 +504,7 @@ export default function Page() {
         year={viewMonth.y}
         month={viewMonth.m}
         isFiltered={monthFiltered}
-        onToggleFilter={() => onPickMonth(monthStr)}
+        onToggleFilter={() => setMonthTab(monthFiltered ? null : viewMonthStr)}
       />
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -623,28 +579,15 @@ export default function Page() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-pink-100 pt-3">
-        <SheetTabs
-          sheets={ws.sheets}
-          activeId={ws.activeId}
-          onSelect={onSelectSheet}
-          onRename={onRenameSheet}
-          onDelete={onDeleteSheet}
+        <span className="shrink-0 text-xs font-medium text-gray-400">
+          월별 (업로드일 기준)
+        </span>
+        <MonthTabs
+          rows={rows}
+          dateKey={monthDateKey}
+          active={monthTab}
+          onSelect={setMonthTab}
         />
-        <button
-          type="button"
-          onClick={onAddMonthSheet}
-          className="shrink-0 rounded-full bg-pink-100 px-3 py-1 text-sm font-semibold text-pink-600 hover:bg-pink-200"
-          title="캘린더에서 보고 있는 달의 시트를 만듭니다"
-        >
-          📅 {viewMonth.y}년 {viewMonth.m + 1}월 시트
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddSheet()}
-          className="shrink-0 rounded-full px-3 py-1 text-sm font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-        >
-          + 빈 시트
-        </button>
       </div>
     </main>
   );
