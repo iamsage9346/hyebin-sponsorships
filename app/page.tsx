@@ -123,18 +123,28 @@ export default function Page() {
   const columns = useMemo(() => activeSheet?.columns ?? [], [activeSheet]);
   const rows = useMemo(() => activeSheet?.rows ?? [], [activeSheet]);
 
+  // 캘린더·월별정산은 활성 시트와 무관하게 모든 시트의 행을 합산해 보여준다.
+  const overviewColumns = useMemo(
+    () => ws?.sheets[0]?.columns ?? [],
+    [ws],
+  );
+  const allRows = useMemo(
+    () => ws?.sheets.flatMap((s) => s.rows) ?? [],
+    [ws],
+  );
+
   // 캘린더/월별정산이 함께 보는 월
   const [viewMonth, setViewMonth] = useState(() => {
     const n = new Date();
     return { y: n.getFullYear(), m: n.getMonth() };
   });
 
-  // 월별 정산 기준 날짜 컬럼 (업로드 우선)
+  // 월별 정산 기준 날짜 컬럼 (업로드 우선) — 오버뷰 컬럼 기준
   const monthDateKey = useMemo(() => {
-    const up = columns.find((c) => c.key === "uploadDate");
+    const up = overviewColumns.find((c) => c.key === "uploadDate");
     if (up) return up.key;
-    return columns.find((c) => c.type === "date")?.key ?? null;
-  }, [columns]);
+    return overviewColumns.find((c) => c.type === "date")?.key ?? null;
+  }, [overviewColumns]);
   const monthStr = `${viewMonth.y}.${String(viewMonth.m + 1).padStart(2, "0")}`;
   const monthFiltered = monthDateKey
     ? filter.search[monthDateKey] === monthStr
@@ -494,8 +504,8 @@ export default function Page() {
       </header>
 
       <CalendarView
-        columns={columns}
-        rows={rows}
+        columns={overviewColumns}
+        rows={allRows}
         view={viewMonth}
         onViewChange={setViewMonth}
       />
@@ -532,8 +542,8 @@ export default function Page() {
       </section>
 
       <MonthlySummary
-        columns={columns}
-        rows={rows}
+        columns={overviewColumns}
+        rows={allRows}
         dateKey={monthDateKey}
         year={viewMonth.y}
         month={viewMonth.m}
