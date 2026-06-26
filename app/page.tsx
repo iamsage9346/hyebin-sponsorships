@@ -22,6 +22,12 @@ import {
 } from "@/lib/storage";
 import { parseDate } from "@/lib/date";
 import { buildSeedData } from "@/lib/seed";
+import { buildMockWorkspace } from "@/lib/mock";
+import {
+  loadAuthMode,
+  clearAuthMode,
+  type AuthMode,
+} from "@/lib/auth";
 import { fetchRemote, saveRemote } from "@/lib/remote";
 import {
   applyFilter,
@@ -36,13 +42,26 @@ import { FilterBar } from "@/components/FilterBar";
 import { CalendarView } from "@/components/CalendarView";
 import { MonthlySummary } from "@/components/MonthlySummary";
 import { MonthTabs } from "@/components/MonthTabs";
+import { PasswordGate } from "@/components/PasswordGate";
 
 export default function Page() {
+  // 접근 모드: hyebin(실제) · admin(mock). null이면 잠금화면.
+  const [mode, setMode] = useState<AuthMode | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => {
+    setMode(loadAuthMode());
+    setAuthReady(true);
+  }, []);
+
   const [ws, setWs] = useState<Workspace | null>(null);
   const [filter, setFilter] = useState<FilterState>(emptyFilter());
   const [filterKeys, setFilterKeys] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState | null>(null);
-  // 업로드일 기준 선택 월 "2026.06" · null이면 전체. 기본은 이번 달.
+  // 월별 탭 기준 컬럼: 업로드일 / 입금일
+  const [monthBasis, setMonthBasis] = useState<"uploadDate" | "paymentDate">(
+    "uploadDate",
+  );
+  // 선택 월 "2026.06" · null이면 전체. 기본은 이번 달.
   const [monthTab, setMonthTab] = useState<string | null>(() => {
     const n = new Date();
     return `${n.getFullYear()}.${String(n.getMonth() + 1).padStart(2, "0")}`;
@@ -51,8 +70,14 @@ export default function Page() {
   const skipSaveRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 최초 로드: 서버(Supabase) 우선, 없으면 localStorage
+  // 최초 로드: admin이면 mock, hyebin이면 서버(Supabase) 우선·없으면 localStorage
   useEffect(() => {
+    if (!mode) return;
+    if (mode === "admin") {
+      skipSaveRef.current = true; // mock은 어디에도 저장하지 않음
+      setWs(buildMockWorkspace());
+      return;
+    }
     let cancelled = false;
     (async () => {
       const remote = await fetchRemote();
@@ -69,11 +94,11 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode]);
 
-  // 변경 시: 로컬 즉시 저장 + 서버 디바운스 저장
+  // 변경 시: 로컬 즉시 저장 + 서버 디바운스 저장 (admin/mock은 저장 안 함)
   useEffect(() => {
-    if (!ws) return;
+    if (!ws || mode !== "hyebin") return;
     saveWorkspace(ws);
     if (skipSaveRef.current) {
       skipSaveRef.current = false;
@@ -85,10 +110,11 @@ export default function Page() {
       saveRemote(snapshot);
       saveTimerRef.current = null;
     }, 700);
-  }, [ws]);
+  }, [ws, mode]);
 
   // 다른 기기에서 바뀐 내용 반영: 탭이 다시 보일 때 서버에서 최신본 가져오기
   useEffect(() => {
+    if (mode !== "hyebin") return;
     const refetch = async () => {
       if (saveTimerRef.current) return; // 내가 방금 수정 중이면 건너뜀
       const remote = await fetchRemote();
@@ -106,7 +132,7 @@ export default function Page() {
       window.removeEventListener("focus", refetch);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [mode]);
 
   const activeId = ws?.activeId ?? "";
 
@@ -140,12 +166,14 @@ export default function Page() {
     return { y: n.getFullYear(), m: n.getMonth() };
   });
 
-  // 월별 정산 기준 날짜 컬럼 (업로드 우선) — 오버뷰 컬럼 기준
+  // 월별 탭·정산 기준 날짜 컬럼 — 선택한 기준(업로드일/입금일)
   const monthDateKey = useMemo(() => {
+    const sel = overviewColumns.find((c) => c.key === monthBasis);
+    if (sel) return sel.key;
     const up = overviewColumns.find((c) => c.key === "uploadDate");
     if (up) return up.key;
     return overviewColumns.find((c) => c.type === "date")?.key ?? null;
-  }, [overviewColumns]);
+  }, [overviewColumns, monthBasis]);
   const viewMonthStr = `${viewMonth.y}.${String(viewMonth.m + 1).padStart(2, "0")}`;
   // 월별 정산의 '이 달만 보기'는 월별 탭과 연동
   const monthFiltered = monthTab === viewMonthStr;
@@ -442,6 +470,24 @@ export default function Page() {
     setFilterKeys([]);
   }, []);
 
+  const onLock = () => {
+    clearAuthMode();
+    setWs(null);
+    setMode(null);
+  };
+
+  // 잠금 상태 처리
+  if (!authReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-pink-300">
+        🤍
+      </main>
+    );
+  }
+  if (!mode) {
+    return <PasswordGate onUnlock={setMode} />;
+  }
+
   if (!ws || !activeSheet) {
     return (
       <main className="flex min-h-screen items-center justify-center text-gray-400">
@@ -455,9 +501,24 @@ export default function Page() {
   return (
     <main className="mx-auto max-w-[1500px] px-3 py-5 sm:px-4 sm:py-6">
       <header className="mb-4 text-center sm:text-left">
-        <h1 className="text-2xl font-extrabold tracking-tight text-pink-500 sm:text-3xl">
-          🎀 혜빈이의 협찬 관리
-        </h1>
+        <div className="flex items-center justify-center gap-2 sm:justify-start">
+          <h1 className="text-2xl font-extrabold tracking-tight text-pink-500 sm:text-3xl">
+            🎀 혜빈이의 협찬 관리
+          </h1>
+          {mode === "admin" && (
+            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600">
+              데모(mock)
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onLock}
+            className="ml-auto shrink-0 rounded-full border border-pink-200 px-3 py-1 text-xs font-medium text-pink-500 hover:bg-pink-50"
+            title="잠금 화면으로"
+          >
+            🔒 잠그기
+          </button>
+        </div>
         <p className="mt-1 text-sm font-medium text-pink-400/80">
           오늘도 협찬 정리 화이팅! 💖
         </p>
@@ -588,9 +649,26 @@ export default function Page() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-pink-100 pt-3">
-        <span className="shrink-0 text-xs font-medium text-gray-400">
-          월별 (업로드일 기준)
-        </span>
+        <span className="shrink-0 text-xs font-medium text-gray-400">월별</span>
+        <div className="flex shrink-0 items-center gap-1 rounded-full bg-pink-50 p-0.5">
+          {([
+            ["uploadDate", "업로드일"],
+            ["paymentDate", "입금일"],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setMonthBasis(key)}
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                monthBasis === key
+                  ? "bg-pink-500 text-white"
+                  : "text-pink-500 hover:bg-pink-100"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <MonthTabs
           rows={rows}
           dateKey={monthDateKey}

@@ -5,7 +5,7 @@ const WS_KEY = "hyebin-sponsorships:workspace:v3";
 const V2_KEY = "hyebin-sponsorships:data:v2";
 const V1_KEY = "hyebin-sponsorships:rows:v1";
 
-function cloneColumns(cols: Column[]): Column[] {
+export function cloneColumns(cols: Column[]): Column[] {
   return cols.map((c) => ({
     ...c,
     options: c.options ? c.options.map((o) => ({ ...o })) : undefined,
