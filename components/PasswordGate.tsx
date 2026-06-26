@@ -1,32 +1,81 @@
 "use client";
 
-import { useState } from "react";
-import { verifyPassword, saveAuthMode, type AuthMode } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import {
+  verifyPassword,
+  saveAuthMode,
+  fetchAuthStatus,
+  setupPassword,
+  isAdminCode,
+  type AuthMode,
+} from "@/lib/auth";
 
 interface Props {
   onUnlock: (mode: AuthMode) => void;
 }
 
-/** 비밀번호 잠금 화면 (RESTRICTED ACCESS 스타일) */
+/** 비밀번호 잠금 화면 (RESTRICTED ACCESS 스타일). 최초 1회는 비번 설정. */
 export function PasswordGate({ onUnlock }: Props) {
+  const [ready, setReady] = useState(false);
+  const [setupMode, setSetupMode] = useState(false); // true면 비번 설정 화면
+
   const [pw, setPw] = useState("");
-  const [error, setError] = useState(false);
-  const [checking, setChecking] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { configured, set } = await fetchAuthStatus();
+      setSetupMode(configured && !set); // 서버는 있는데 아직 비번 미설정 → 설정
+      setReady(true);
+    })();
+  }, []);
+
+  const finish = (mode: AuthMode) => {
+    saveAuthMode(mode);
+    onUnlock(mode);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (checking || pw.length === 0) return;
-    setChecking(true);
-    const mode = await verifyPassword(pw);
-    setChecking(false);
-    if (mode) {
-      saveAuthMode(mode);
-      onUnlock(mode);
-    } else {
-      setError(true);
-      setPw("");
+    if (busy || pw.length === 0) return;
+    setBusy(true);
+    try {
+      if (setupMode) {
+        // 설정 화면이라도 admin 데모 코드는 바로 입장
+        if (await isAdminCode(pw)) return finish("admin");
+        if (pw.trim().length < 4) {
+          setError("4자 이상으로 정해 주세요");
+          return;
+        }
+        if (pw !== confirm) {
+          setError("두 번 입력한 코드가 달라요");
+          return;
+        }
+        const ok = await setupPassword(pw);
+        if (ok) finish("hyebin");
+        else setError("설정에 실패했어요. 다시 시도해 주세요");
+        return;
+      }
+      const mode = await verifyPassword(pw);
+      if (mode) finish(mode);
+      else {
+        setError("Invalid access code");
+        setPw("");
+      }
+    } finally {
+      setBusy(false);
     }
   };
+
+  if (!ready) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#23262d] font-mono text-xs uppercase tracking-[0.22em] text-gray-500">
+        loading…
+      </main>
+    );
+  }
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#23262d] px-4">
@@ -58,7 +107,7 @@ export function PasswordGate({ onUnlock }: Props) {
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-gray-400">
-              Restricted Access
+              {setupMode ? "First-time Setup" : "Restricted Access"}
             </div>
             <div className="text-lg font-semibold tracking-wide text-white">
               협찬 관리
@@ -68,7 +117,7 @@ export function PasswordGate({ onUnlock }: Props) {
 
         {/* 입력 */}
         <div className="mt-7 text-[10px] uppercase tracking-[0.22em] text-gray-400">
-          Access Code
+          {setupMode ? "Set Access Code" : "Access Code"}
         </div>
         <div
           className={`mt-2 flex items-center rounded-lg border bg-black/20 transition-colors ${
@@ -83,29 +132,60 @@ export function PasswordGate({ onUnlock }: Props) {
             autoFocus
             onChange={(e) => {
               setPw(e.target.value);
-              setError(false);
+              setError("");
             }}
-            placeholder="Enter access code"
+            placeholder={setupMode ? "Create access code" : "Enter access code"}
             className="flex-1 bg-transparent px-4 py-3 text-sm text-gray-100 outline-none placeholder:text-gray-500"
           />
-          <button
-            type="submit"
-            disabled={checking || pw.length === 0}
-            className="m-1.5 rounded-md border border-white/10 bg-white/10 px-3 py-2 text-gray-200 transition-colors hover:bg-white/20 disabled:opacity-40"
-            aria-label="확인"
-          >
-            {checking ? "…" : "→"}
-          </button>
+          {!setupMode && (
+            <button
+              type="submit"
+              disabled={busy || pw.length === 0}
+              className="m-1.5 rounded-md border border-white/10 bg-white/10 px-3 py-2 text-gray-200 transition-colors hover:bg-white/20 disabled:opacity-40"
+              aria-label="확인"
+            >
+              {busy ? "…" : "→"}
+            </button>
+          )}
         </div>
+
+        {/* 설정 모드: 확인 입력 + 버튼 */}
+        {setupMode && (
+          <>
+            <div className="mt-3 text-[10px] uppercase tracking-[0.22em] text-gray-400">
+              Confirm Access Code
+            </div>
+            <input
+              type="password"
+              value={confirm}
+              onChange={(e) => {
+                setConfirm(e.target.value);
+                setError("");
+              }}
+              placeholder="Re-enter access code"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-sm text-gray-100 outline-none transition-colors placeholder:text-gray-500 focus:border-white/30"
+            />
+            <button
+              type="submit"
+              disabled={busy || pw.length === 0}
+              className="mt-4 w-full rounded-lg border border-white/10 bg-white/15 px-4 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-white transition-colors hover:bg-white/25 disabled:opacity-40"
+            >
+              {busy ? "…" : "Set & Enter"}
+            </button>
+          </>
+        )}
+
         {error && (
           <p className="mt-2 text-[11px] uppercase tracking-[0.15em] text-red-400">
-            Invalid access code
+            {error}
           </p>
         )}
 
         {/* 푸터 */}
         <div className="mt-7 border-t border-white/10 pt-3 text-[10px] uppercase tracking-[0.22em] text-gray-500">
-          Sponsorship · Authorized Access Only
+          {setupMode
+            ? "Set your code · used from next time"
+            : "Sponsorship · Authorized Access Only"}
         </div>
       </form>
     </main>
