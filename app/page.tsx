@@ -382,6 +382,15 @@ export default function Page() {
     [updateSheet],
   );
 
+  // 월별 탭 선택 시 캘린더·월별정산도 그 달로 맞춘다
+  const onSelectMonthTab = useCallback((m: string | null) => {
+    setMonthTab(m);
+    if (m) {
+      const [y, mm] = m.split(".").map(Number);
+      setViewMonth({ y, m: mm - 1 });
+    }
+  }, []);
+
   // ----- 정렬 -----
   const onToggleSort = useCallback((key: string) => {
     setSort((s) => {
@@ -586,7 +595,7 @@ export default function Page() {
           rows={rows}
           dateKey={monthDateKey}
           active={monthTab}
-          onSelect={setMonthTab}
+          onSelect={onSelectMonthTab}
         />
       </div>
     </main>
