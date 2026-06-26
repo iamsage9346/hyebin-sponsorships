@@ -36,7 +36,7 @@ export function SheetTabs({
   };
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200 pb-px">
+    <div className="flex items-center gap-1 overflow-x-auto">
       {sheets.map((s) => {
         const active = s.id === activeId;
         if (editingId === s.id) {
@@ -58,9 +58,9 @@ export function SheetTabs({
         return (
           <div
             key={s.id}
-            className={`group flex shrink-0 items-center rounded-t-xl border-b-2 ${
+            className={`group flex shrink-0 items-center rounded-full border-2 ${
               active
-                ? "border-pink-500 bg-white text-pink-600"
+                ? "border-pink-400 bg-white text-pink-600"
                 : "border-transparent text-gray-400 hover:bg-pink-50"
             }`}
           >

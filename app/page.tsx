@@ -493,16 +493,6 @@ export default function Page() {
         </p>
       </header>
 
-      <div className="mb-4">
-        <SheetTabs
-          sheets={ws.sheets}
-          activeId={ws.activeId}
-          onSelect={onSelectSheet}
-          onRename={onRenameSheet}
-          onDelete={onDeleteSheet}
-        />
-      </div>
-
       <CalendarView
         columns={columns}
         rows={rows}
@@ -623,11 +613,17 @@ export default function Page() {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-pink-100 pt-3">
-        <span className="text-xs font-medium text-gray-400">시트 추가</span>
+        <SheetTabs
+          sheets={ws.sheets}
+          activeId={ws.activeId}
+          onSelect={onSelectSheet}
+          onRename={onRenameSheet}
+          onDelete={onDeleteSheet}
+        />
         <button
           type="button"
           onClick={onAddMonthSheet}
-          className="rounded-full bg-pink-100 px-3 py-1 text-sm font-semibold text-pink-600 hover:bg-pink-200"
+          className="shrink-0 rounded-full bg-pink-100 px-3 py-1 text-sm font-semibold text-pink-600 hover:bg-pink-200"
           title="캘린더에서 보고 있는 달의 시트를 만듭니다"
         >
           📅 {viewMonth.y}년 {viewMonth.m + 1}월 시트
@@ -635,7 +631,7 @@ export default function Page() {
         <button
           type="button"
           onClick={() => onAddSheet()}
-          className="rounded-full px-3 py-1 text-sm font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="shrink-0 rounded-full px-3 py-1 text-sm font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-600"
         >
           + 빈 시트
         </button>
