@@ -1,8 +1,8 @@
 import type { Column, Row, SheetData } from "./types";
 
 /** 기본으로 열어두는 행·열 개수 (스프레드시트처럼 스크롤) */
-export const TOTAL_ROWS = 100;
-export const TOTAL_COLS = 100;
+export const TOTAL_ROWS = 50;
+export const TOTAL_COLS = 50;
 
 const NAMED_COLUMNS: Column[] = [
   { key: "adDate", label: "광고 날짜", type: "date", width: 110 },

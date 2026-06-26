@@ -361,13 +361,25 @@ export default function Page() {
     setWs((w) => (w ? { ...w, activeId: id } : w));
   }, []);
 
-  const onAddSheet = useCallback(() => {
+  const onAddSheet = useCallback((name?: string) => {
     setWs((w) => {
       if (!w) return w;
-      const sheet = createBlankSheet(`시트 ${w.sheets.length + 1}`);
+      const sheet = createBlankSheet(name ?? `시트 ${w.sheets.length + 1}`);
       return { sheets: [...w.sheets, sheet], activeId: sheet.id };
     });
   }, []);
+
+  // 현재 캘린더가 보고 있는 달로 새 시트 생성 (이미 있으면 그 시트로 이동)
+  const onAddMonthSheet = useCallback(() => {
+    const name = `${viewMonth.y}년 ${viewMonth.m + 1}월`;
+    setWs((w) => {
+      if (!w) return w;
+      const existing = w.sheets.find((s) => s.name === name);
+      if (existing) return { ...w, activeId: existing.id };
+      const sheet = createBlankSheet(name);
+      return { sheets: [...w.sheets, sheet], activeId: sheet.id };
+    });
+  }, [viewMonth]);
 
   const onRenameSheet = useCallback((id: string, name: string) => {
     setWs((w) =>
@@ -486,7 +498,6 @@ export default function Page() {
           sheets={ws.sheets}
           activeId={ws.activeId}
           onSelect={onSelectSheet}
-          onAdd={onAddSheet}
           onRename={onRenameSheet}
           onDelete={onDeleteSheet}
         />
@@ -593,7 +604,7 @@ export default function Page() {
         onDeleteRow={onDeleteRow}
       />
 
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onAddRow}
@@ -608,6 +619,25 @@ export default function Page() {
           title="VOVA·폴리오 등 기초 데이터 18건으로 채우기"
         >
           📥 기초 데이터 채우기
+        </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-pink-100 pt-3">
+        <span className="text-xs font-medium text-gray-400">시트 추가</span>
+        <button
+          type="button"
+          onClick={onAddMonthSheet}
+          className="rounded-full bg-pink-100 px-3 py-1 text-sm font-semibold text-pink-600 hover:bg-pink-200"
+          title="캘린더에서 보고 있는 달의 시트를 만듭니다"
+        >
+          📅 {viewMonth.y}년 {viewMonth.m + 1}월 시트
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddSheet()}
+          className="rounded-full px-3 py-1 text-sm font-medium text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          + 빈 시트
         </button>
       </div>
     </main>

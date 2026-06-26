@@ -7,7 +7,6 @@ interface Props {
   sheets: Sheet[];
   activeId: string;
   onSelect: (id: string) => void;
-  onAdd: () => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
 }
@@ -16,7 +15,6 @@ export function SheetTabs({
   sheets,
   activeId,
   onSelect,
-  onAdd,
   onRename,
   onDelete,
 }: Props) {
@@ -90,14 +88,6 @@ export function SheetTabs({
           </div>
         );
       })}
-      <button
-        type="button"
-        onClick={onAdd}
-        className="shrink-0 rounded-full px-2 py-1.5 text-lg text-pink-400 hover:bg-pink-50 hover:text-pink-600"
-        title="시트 추가"
-      >
-        +
-      </button>
     </div>
   );
 }
