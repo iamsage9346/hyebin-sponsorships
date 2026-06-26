@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 
 const URL = process.env.POSTGRES_URL || process.env.POSTGRES_URL_NON_POOLING;
 const AUTH_ID = "auth";
+// admin1004 (데모/관리자) — 비번 초기화 권한 확인용
+const ADMIN_HASH =
+  "b4f9ffa70ae677cdc2be4ee64e612a239221bc99f3be6ddb45bce0ba5bb76af1";
 
 let sql: ReturnType<typeof postgres> | null = null;
 let ensured = false;
@@ -76,6 +79,13 @@ export async function POST(req: Request) {
     if (action === "verify") {
       const stored = await storedHash(client);
       return Response.json({ ok: true, match: Boolean(stored) && stored === hash });
+    }
+
+    // 관리자(admin) 코드로 비번 초기화 → 다시 설정 화면으로
+    if (action === "reset") {
+      if (hash !== ADMIN_HASH) return Response.json({ ok: false });
+      await client`delete from workspace where id = ${AUTH_ID}`;
+      return Response.json({ ok: true });
     }
 
     return Response.json({ ok: false });

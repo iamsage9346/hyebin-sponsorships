@@ -6,6 +6,7 @@ import {
   saveAuthMode,
   fetchAuthStatus,
   setupPassword,
+  resetPassword,
   isAdminCode,
   type AuthMode,
 } from "@/lib/auth";
@@ -18,6 +19,7 @@ interface Props {
 export function PasswordGate({ onUnlock }: Props) {
   const [ready, setReady] = useState(false);
   const [setupMode, setSetupMode] = useState(false); // true면 비번 설정 화면
+  const [resetMode, setResetMode] = useState(false); // true면 관리자 초기화 화면
 
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -42,6 +44,20 @@ export function PasswordGate({ onUnlock }: Props) {
     if (busy || pw.length === 0) return;
     setBusy(true);
     try {
+      if (resetMode) {
+        const ok = await resetPassword(pw);
+        if (ok) {
+          setResetMode(false);
+          setSetupMode(true);
+          setPw("");
+          setConfirm("");
+          setError("");
+        } else {
+          setError("관리자 코드가 아니에요");
+          setPw("");
+        }
+        return;
+      }
       if (setupMode) {
         // 설정 화면이라도 admin 데모 코드는 바로 입장
         if (await isAdminCode(pw)) return finish("admin");
@@ -107,7 +123,11 @@ export function PasswordGate({ onUnlock }: Props) {
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-[0.22em] text-gray-400">
-              {setupMode ? "First-time Setup" : "Restricted Access"}
+              {resetMode
+                ? "Admin Reset"
+                : setupMode
+                  ? "First-time Setup"
+                  : "Restricted Access"}
             </div>
             <div className="text-lg font-semibold tracking-wide text-white">
               협찬 관리
@@ -117,7 +137,7 @@ export function PasswordGate({ onUnlock }: Props) {
 
         {/* 입력 */}
         <div className="mt-7 text-[10px] uppercase tracking-[0.22em] text-gray-400">
-          {setupMode ? "Set Access Code" : "Access Code"}
+          {resetMode ? "Admin Code" : setupMode ? "Set Access Code" : "Access Code"}
         </div>
         <div
           className={`mt-2 flex items-center rounded-lg border bg-black/20 transition-colors ${
@@ -134,7 +154,13 @@ export function PasswordGate({ onUnlock }: Props) {
               setPw(e.target.value);
               setError("");
             }}
-            placeholder={setupMode ? "Create access code" : "Enter access code"}
+            placeholder={
+              resetMode
+                ? "Enter admin code"
+                : setupMode
+                  ? "Create access code"
+                  : "Enter access code"
+            }
             className="flex-1 bg-transparent px-4 py-3 text-sm text-gray-100 outline-none placeholder:text-gray-500"
           />
           {!setupMode && (
@@ -181,11 +207,31 @@ export function PasswordGate({ onUnlock }: Props) {
           </p>
         )}
 
+        {/* 비번 잊음 → 관리자 초기화 / 돌아가기 */}
+        {!setupMode && (
+          <div className="mt-4 text-right">
+            <button
+              type="button"
+              onClick={() => {
+                setResetMode((v) => !v);
+                setPw("");
+                setConfirm("");
+                setError("");
+              }}
+              className="text-[10px] uppercase tracking-[0.18em] text-gray-500 hover:text-gray-300"
+            >
+              {resetMode ? "← Back to login" : "Forgot? Admin reset"}
+            </button>
+          </div>
+        )}
+
         {/* 푸터 */}
         <div className="mt-7 border-t border-white/10 pt-3 text-[10px] uppercase tracking-[0.22em] text-gray-500">
-          {setupMode
-            ? "Set your code · used from next time"
-            : "Sponsorship · Authorized Access Only"}
+          {resetMode
+            ? "Admin code resets the access code"
+            : setupMode
+              ? "Set your code · used from next time"
+              : "Sponsorship · Authorized Access Only"}
         </div>
       </form>
     </main>

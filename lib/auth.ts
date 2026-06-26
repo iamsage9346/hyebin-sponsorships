@@ -61,6 +61,23 @@ export async function setupPassword(plain: string): Promise<boolean> {
   }
 }
 
+/** 관리자(admin) 코드로 혜빈 비번 초기화 → 다시 설정 화면. 성공 여부 반환 */
+export async function resetPassword(adminInput: string): Promise<boolean> {
+  const hash = await sha256(adminInput.trim());
+  if (hash !== ADMIN_HASH) return false;
+  try {
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset", hash }),
+    });
+    const j = (await res.json()) as { ok?: boolean };
+    return Boolean(j?.ok);
+  } catch {
+    return false;
+  }
+}
+
 /** 비밀번호 확인 → 모드. 틀리면 null */
 export async function verifyPassword(input: string): Promise<AuthMode | null> {
   const hash = await sha256(input.trim());
